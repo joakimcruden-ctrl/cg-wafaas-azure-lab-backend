@@ -1,5 +1,6 @@
 param(
-    [string] $Subscription
+    [string] $Subscription,
+    [switch] $Delete
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,6 +79,25 @@ function Ensure-AzSubscription {
     }
 }
 
+function Get-PrefixFromConfig {
+    param([string] $TfDir)
+    $tfvars = Join-Path $TfDir "terraform.tfvars"
+    if (Test-Path -LiteralPath $tfvars) {
+        $line = Get-Content -LiteralPath $tfvars | Where-Object { $_ -match '^\s*prefix\s*=\s*"([^"]+)"' } | Select-Object -First 1
+        if ($line) {
+            $m = [regex]::Match($line, '^\s*prefix\s*=\s*"([^"]+)"')
+            if ($m.Success) { return $m.Groups[1].Value }
+        }
+    }
+    $variables = Join-Path $TfDir "variables.tf"
+    if (Test-Path -LiteralPath $variables) {
+        $content = Get-Content -LiteralPath $variables -Raw
+        $m = [System.Text.RegularExpressions.Regex]::Match($content, 'variable\s+"prefix"[\s\S]*?default\s*=\s*"([^"]+)"', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        if ($m.Success) { return $m.Groups[1].Value }
+    }
+    return "wafaas-lab"
+}
+
 function Require-UsersFile {
     param([string] $Path)
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -102,7 +122,7 @@ Require-Command -Name az -InstallHint "Install Azure CLI from https://learn.micr
 Require-TerraformVersion -MinVersion ([Version]::new(1,3,0)) -TerraformExe $TerraformExe
 Require-AzLogin
 Ensure-AzSubscription -Desired $Subscription
-Require-UsersFile -Path $usersFile
+if (-not $Delete) { Require-UsersFile -Path $usersFile }
 
 # Export subscription context for Terraform provider (defensive)
 $acct = az account show -o json --only-show-errors | ConvertFrom-Json
@@ -118,6 +138,28 @@ try {
     Write-Host "Initializing Terraform..."
     & $TerraformExe init -upgrade
     if ($LASTEXITCODE -ne 0) { throw "Terraform init failed with exit code $LASTEXITCODE." }
+
+    if ($Delete) {
+        Write-Host "Destroying Terraform-managed resources (auto-approve)..."
+        & $TerraformExe destroy -auto-approve
+        if ($LASTEXITCODE -ne 0) { Write-Warning "Terraform destroy failed with exit code $LASTEXITCODE. Attempting RG cleanup." }
+
+        $prefix = Get-PrefixFromConfig -TfDir $tfDir
+        $rgName = "$prefix-rg"
+        Write-Host "Ensuring resource group '$rgName' is deleted..."
+        $exists = (& az group exists -n $rgName --only-show-errors).Trim()
+        if ($LASTEXITCODE -eq 0 -and $exists -eq 'true') {
+            & az group delete -n $rgName --yes --only-show-errors
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Failed to delete resource group '$rgName' via az CLI. It may delete asynchronously or contain non-Terraform resources."
+            } else {
+                Write-Host "Resource group '$rgName' deletion initiated."
+            }
+        } else {
+            Write-Host "Resource group '$rgName' does not exist or could not be checked."
+        }
+        return
+    }
 
     Write-Host "Applying Terraform..."
     & $TerraformExe apply -auto-approve
