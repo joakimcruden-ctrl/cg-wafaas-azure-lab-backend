@@ -104,6 +104,15 @@ Require-AzLogin
 Ensure-AzSubscription -Desired $Subscription
 Require-UsersFile -Path $usersFile
 
+# Export subscription context for Terraform provider (defensive)
+$acct = az account show -o json --only-show-errors | ConvertFrom-Json
+if (-not $acct -or -not $acct.id) {
+    throw "Unable to resolve Azure subscription context after selection."
+}
+Write-Host "Using Azure subscription: $($acct.name) ($($acct.id))"
+$env:ARM_SUBSCRIPTION_ID = $acct.id
+if ($acct.tenantId) { $env:ARM_TENANT_ID = $acct.tenantId }
+
 Push-Location $tfDir
 try {
     Write-Host "Initializing Terraform..."
