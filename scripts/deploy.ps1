@@ -14,9 +14,18 @@ function Require-Command {
     }
 }
 
+function Get-TerraformCommand {
+    param([string] $FixedDir = "C:\\Program Files\\Terraform")
+    $cmd = Get-Command terraform -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Path }
+    $candidate = Join-Path $FixedDir "terraform.exe"
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
+    throw "Terraform not found in PATH or at '$FixedDir'. Install Terraform to '$FixedDir' or add it to PATH."
+}
+
 function Require-TerraformVersion {
-    param([Version] $MinVersion)
-    $line = (& terraform version | Select-Object -First 1)
+    param([Version] $MinVersion, [string] $TerraformExe)
+    $line = (& $TerraformExe version | Select-Object -First 1)
     if (-not $line) { throw "Unable to determine Terraform version." }
     if ($line -match 'v?([0-9]+)\.([0-9]+)\.([0-9]+)') {
         $ver = [Version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
@@ -55,28 +64,28 @@ $usersFile = Join-Path $repoRoot "users.txt"
 
 # Dependency and environment checks
 Write-Host "Checking prerequisites..."
-Require-Command -Name terraform -InstallHint "Install from https://developer.hashicorp.com/terraform/downloads and ensure it's in PATH."
+${TerraformExe} = Get-TerraformCommand
 Require-Command -Name az -InstallHint "Install Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli."
-Require-TerraformVersion -MinVersion ([Version]::new(1,3,0))
+Require-TerraformVersion -MinVersion ([Version]::new(1,3,0)) -TerraformExe $TerraformExe
 Require-AzLogin
 Require-UsersFile -Path $usersFile
 
 Push-Location $tfDir
 try {
     Write-Host "Initializing Terraform..."
-    terraform init -upgrade
+    & $TerraformExe init -upgrade
 
     Write-Host "Applying Terraform..."
-    terraform apply -auto-approve
+    & $TerraformExe apply -auto-approve
 
     Write-Host ""
-    $credentialsFile = terraform output -raw credentials_file
+    $credentialsFile = & $TerraformExe output -raw credentials_file
     Write-Host "Deployment complete. Credentials file: $credentialsFile"
 
-    $attackerEndpoint = terraform output -json attacker_endpoint
+    $attackerEndpoint = & $TerraformExe output -json attacker_endpoint
     Write-Host "Attacker endpoint: $attackerEndpoint"
 
-    $apiEndpoints = terraform output -json api_endpoints
+    $apiEndpoints = & $TerraformExe output -json api_endpoints
     Write-Host "API endpoints: $apiEndpoints"
 }
 finally {
