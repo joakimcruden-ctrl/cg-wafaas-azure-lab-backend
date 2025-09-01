@@ -30,7 +30,7 @@ runcmd:
     users=(
 ${users_yaml}
     )
-    for entry in "${users[@]}"; do :; done
+    for entry in "$${users[@]}"; do :; done
     '
   - |
     bash -lc '
