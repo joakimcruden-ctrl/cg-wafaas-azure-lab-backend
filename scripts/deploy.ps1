@@ -74,9 +74,11 @@ Push-Location $tfDir
 try {
     Write-Host "Initializing Terraform..."
     & $TerraformExe init -upgrade
+    if ($LASTEXITCODE -ne 0) { throw "Terraform init failed with exit code $LASTEXITCODE." }
 
     Write-Host "Applying Terraform..."
     & $TerraformExe apply -auto-approve
+    if ($LASTEXITCODE -ne 0) { throw "Terraform apply failed with exit code $LASTEXITCODE." }
 
     Write-Host ""
     $credentialsFile = & $TerraformExe output -raw credentials_file
