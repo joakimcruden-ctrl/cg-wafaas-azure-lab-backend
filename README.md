@@ -10,6 +10,7 @@ Quick start
 - Linux/macOS: run `./scripts/deploy.sh`.
 - Windows (PowerShell): run `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1`.
 - Note: The PowerShell script uses Terraform from PATH if available; otherwise it looks for `terraform.exe` in `C:\Program Files\Terraform`.
+- If you have multiple Azure subscriptions or no default is set, pass your subscription explicitly: `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1 -Subscription "<subscription id or exact name>"`.
 - Alternative (any OS): `terraform -chdir=terraform init && terraform -chdir=terraform apply -auto-approve`.
 
 Outputs

@@ -1,5 +1,9 @@
 $ErrorActionPreference = "Stop"
 
+param(
+    [string] $Subscription
+)
+
 function Require-Command {
     param(
         [Parameter(Mandatory)] [string] $Name,
@@ -45,6 +49,35 @@ function Require-AzLogin {
     }
 }
 
+function Ensure-AzSubscription {
+    param([string] $Desired)
+
+    if ($Desired) {
+        Write-Host "Setting Azure subscription to: $Desired"
+        & az account set --subscription $Desired --only-show-errors
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to set Azure subscription to '$Desired'. Use an ID or exact name from 'az account list'."
+        }
+    }
+
+    $current = az account show -o json --only-show-errors | ConvertFrom-Json
+    if (-not $current -or -not $current.id) {
+        $subs = az account list -o json --only-show-errors | ConvertFrom-Json
+        if (-not $subs -or $subs.Count -eq 0) {
+            throw "No Azure subscriptions available for the logged in account."
+        }
+        if ($subs.Count -eq 1) {
+            $only = $subs[0]
+            Write-Host "No default subscription set. Using the only available subscription: $($only.name) ($($only.id))"
+            & az account set --subscription $only.id --only-show-errors
+            if ($LASTEXITCODE -ne 0) { throw "Failed to set Azure subscription to '$($only.id)'." }
+        } else {
+            $list = $subs | ForEach-Object { "- $($_.name) (`$($_.id)`)" } | Out-String
+            throw "No default Azure subscription is set. Re-run with -Subscription '<id or name>'. Available subscriptions:`n$list"
+        }
+    }
+}
+
 function Require-UsersFile {
     param([string] $Path)
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -68,6 +101,7 @@ ${TerraformExe} = Get-TerraformCommand
 Require-Command -Name az -InstallHint "Install Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli."
 Require-TerraformVersion -MinVersion ([Version]::new(1,3,0)) -TerraformExe $TerraformExe
 Require-AzLogin
+Ensure-AzSubscription -Desired $Subscription
 Require-UsersFile -Path $usersFile
 
 Push-Location $tfDir
