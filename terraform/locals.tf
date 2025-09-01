@@ -2,45 +2,42 @@ locals {
   raw_users = split("\n", chomp(file(var.users_file)))
   user_list = [for u in local.raw_users : trimspace(u) if trimspace(u) != ""]
 
-  # Sanitized prefix for DNS label usage: only [a-z0-9-], collapse dashes, trim edges, ensure starts with a letter, non-empty
-  prefix_sanitized = regexreplace(
-    regexreplace(
-      regexreplace(lower(var.prefix), "[^a-z0-9-]", "-"),
-      "-+", "-"
+  # Best-effort sanitized prefix for DNS label usage without regex functions
+  prefix_label = substr(
+    replace(
+      replace(
+        replace(lower(var.prefix), " ", "-"),
+        "_", "-"
+      ),
+      ".", "-"
     ),
-    "^-+|-+$", ""
+    0, 60
   )
-  prefix_label = length(local.prefix_sanitized) == 0 ? "a" : (can(regex("^[a-z].*", local.prefix_sanitized)) ? local.prefix_sanitized : "a${local.prefix_sanitized}")
 
-  # Per-user sanitized labels: only [a-z0-9-], collapse dashes, trim edges, cap length, and default to 'user' if empty
+  # Per-user sanitized labels without regex: replace common separators and punctuation
   user_labels = {
     for u in local.user_list : u => (
-      length(
-        regexreplace(
-          substr(
-            regexreplace(
-              regexreplace(
-                regexreplace(lower(u), "[^a-z0-9-]", "-"),
-                "-+", "-"
+      substr(
+        replace(
+          replace(
+            replace(
+              replace(
+                replace(
+                  replace(
+                    replace(lower(u), " ", "-"),
+                    "_", "-"
+                  ),
+                  ".", "-"
+                ),
+                "/", "-"
               ),
-              "^-+|-+$", ""
+              "\\", "-"
             ),
-            0, 50
+            "@", "-"
           ),
-          "-+$", ""
-        )
-      ) == 0 ? "user" : regexreplace(
-        substr(
-          regexreplace(
-            regexreplace(
-              regexreplace(lower(u), "[^a-z0-9-]", "-"),
-              "-+", "-"
-            ),
-            "^-+|-+$", ""
-          ),
-          0, 50
+          "+", "-"
         ),
-        "-+$", ""
+        0, 50
       )
     )
   }
