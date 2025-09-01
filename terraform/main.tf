@@ -80,7 +80,20 @@ resource "azurerm_public_ip" "attacker" {
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Dynamic"
   sku                 = "Basic"
-  domain_name_label   = substr(replace(lower("${var.prefix}-attacker"), "[^a-z0-9-]", "-"), 0, 60)
+  # Ensure: only [a-z0-9-], collapse runs of '-', trim leading/trailing '-', then truncate and trim trailing '-' again
+  domain_name_label   = replace(
+    substr(
+      replace(
+        replace(
+          replace(lower("${var.prefix}-attacker"), "[^a-z0-9-]", "-"),
+          "-+", "-"
+        ),
+        "^-+|-+$", ""
+      ),
+      0, 60
+    ),
+    "-+$", ""
+  )
 }
 
 resource "azurerm_public_ip" "api" {
@@ -90,7 +103,20 @@ resource "azurerm_public_ip" "api" {
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Dynamic"
   sku                 = "Basic"
-  domain_name_label   = substr(replace(lower("${var.prefix}-${lookup(local.user_labels, each.key)}"), "[^a-z0-9-]", "-"), 0, 60)
+  # Ensure: only [a-z0-9-], collapse runs of '-', trim leading/trailing '-', then truncate and trim trailing '-' again
+  domain_name_label   = replace(
+    substr(
+      replace(
+        replace(
+          replace(lower("${var.prefix}-${lookup(local.user_labels, each.key)}"), "[^a-z0-9-]", "-"),
+          "-+", "-"
+        ),
+        "^-+|-+$", ""
+      ),
+      0, 60
+    ),
+    "-+$", ""
+  )
 }
 
 resource "azurerm_network_interface" "attacker" {
