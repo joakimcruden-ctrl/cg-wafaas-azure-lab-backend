@@ -85,7 +85,7 @@ resource "azurerm_public_ip" "attacker" {
 
 resource "azurerm_public_ip" "api" {
   for_each            = { for u in local.user_list : u => u }
-  name                = "${var.prefix}-api-${each.key}-pip"
+  name                = substr("${var.prefix}-api-${lookup(local.user_labels, each.key)}-pip", 0, 80)
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Dynamic"
@@ -108,7 +108,7 @@ resource "azurerm_network_interface" "attacker" {
 
 resource "azurerm_network_interface" "api" {
   for_each            = azurerm_public_ip.api
-  name                = "${var.prefix}-api-${each.key}-nic"
+  name                = substr("${var.prefix}-api-${lookup(local.user_labels, each.key)}-nic", 0, 80)
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -177,7 +177,7 @@ resource "azurerm_linux_virtual_machine" "attacker" {
 
 resource "azurerm_linux_virtual_machine" "api" {
   for_each                   = azurerm_network_interface.api
-  name                       = "${var.prefix}-api-${each.key}"
+  name                       = substr("${var.prefix}-api-${lookup(local.user_labels, each.key)}", 0, 64)
   resource_group_name        = azurerm_resource_group.rg.name
   location                   = azurerm_resource_group.rg.location
   size                       = var.api_vm_size
@@ -197,10 +197,10 @@ resource "azurerm_linux_virtual_machine" "api" {
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
-    name                 = "${var.prefix}-api-${each.key}-osdisk"
+    name                 = substr("${var.prefix}-api-${lookup(local.user_labels, each.key)}-osdisk", 0, 80)
   }
 
-  computer_name = "api-${replace(lower(each.key), "[^a-z0-9-]", "-")}"
+  computer_name = substr("api-${lookup(local.user_labels, each.key)}", 0, 63)
   custom_data   = base64encode(local.api_cloudinits[each.key])
 }
 
