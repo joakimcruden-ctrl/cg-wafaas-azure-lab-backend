@@ -96,27 +96,29 @@ locals {
               ),
               0, 32
             ), 0, 1))
-          ? "u" ~ substr(
-              replace(
+          ? format("u%s",
+              substr(
                 replace(
                   replace(
                     replace(
                       replace(
                         replace(
-                          replace(lower(u), " ", ""),
-                          "_", ""
+                          replace(
+                            replace(lower(u), " ", ""),
+                            "_", ""
+                          ),
+                          ".", ""
                         ),
-                        ".", ""
+                        "/", ""
                       ),
-                      "/", ""
+                      "\\", ""
                     ),
-                    "\\", ""
+                    "@", ""
                   ),
-                  "@", ""
+                  "+", ""
                 ),
-                "+", ""
-              ),
-              0, 31
+                0, 31
+              )
             )
           : substr(
               replace(
