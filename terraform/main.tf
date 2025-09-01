@@ -138,12 +138,12 @@ data "azurerm_platform_image" "kali" {
 # Cloud-init templates
 locals {
   api_cloudinits = { for u in local.user_list : u => templatefile("${path.module}/templates/cloud-init-api.yaml.tftpl", {
-    username = u
+    username = lookup(local.user_usernames, u)
     password = random_password.user_pw[u].result
   }) }
 
   attacker_cloudinit = templatefile("${path.module}/templates/cloud-init-attacker.yaml.tftpl", {
-    users_yaml = join("\n", [for u in local.user_list : "  - { name: \"${u}\", password: \"${random_password.user_pw[u].result}\" }" ])
+    users_yaml = join("\n", [for u in local.user_list : "  - { name: \"${lookup(local.user_usernames, u)}\", password: \"${random_password.user_pw[u].result}\" }" ])
   })
 }
 
@@ -210,7 +210,7 @@ resource "local_file" "credentials" {
   content  = join("\n", concat([
     "username,password,api_vm_ip,api_vm_fqdn,attacker_vm_ip,attacker_vm_fqdn"
   ], [for u in local.user_list : join(",", [
-    u,
+    lookup(local.user_usernames, u),
     random_password.user_pw[u].result,
     try(azurerm_linux_virtual_machine.api[u].public_ip_address, ""),
     try(azurerm_public_ip.api[u].fqdn, ""),
