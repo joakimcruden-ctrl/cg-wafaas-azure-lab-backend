@@ -1,8 +1,8 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [string] $Subscription
 )
+
+$ErrorActionPreference = "Stop"
 
 function Require-Command {
     param(
