@@ -1,0 +1,26 @@
+#cloud-config
+package_update: true
+packages:
+  - docker.io
+  - git
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/60-password-auth.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication yes
+  - path: /etc/sudoers.d/99-lab-nopasswd
+    permissions: '0440'
+    content: |
+      %sudo ALL=(ALL) NOPASSWD:ALL
+
+runcmd:
+  - [ systemctl, restart, ssh ]
+  - [ useradd, -m, -s, /bin/bash, ${username} ]
+  - [ bash, -lc, "echo '${username}:${password}' | chpasswd" ]
+  - [ usermod, -aG, sudo, ${username} ]
+  - [ systemctl, enable, --now, docker ]
+  - [ bash, -lc, "cd /opt && git clone https://github.com/erev0s/VAmPI.git || true" ]
+  - [ bash, -lc, "cd /opt/VAmPI && docker build -t vampi ." ]
+  - [ bash, -lc, "docker rm -f vampi || true" ]
+  - [ bash, -lc, "docker run -d --name vampi --restart unless-stopped -p 80:5000 vampi" ]

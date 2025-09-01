@@ -1,0 +1,49 @@
+#cloud-config
+package_update: true
+packages:
+  - nmap
+  - sqlmap
+  - gobuster
+  - ffuf
+  - curl
+  - httpie
+  - jq
+  - git
+  - docker.io
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/60-password-auth.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication yes
+  - path: /etc/sudoers.d/99-lab-nopasswd
+    permissions: '0440'
+    content: |
+      %sudo ALL=(ALL) NOPASSWD:ALL
+
+runcmd:
+  - [ systemctl, restart, ssh ]
+  - [ systemctl, enable, --now, docker ]
+  - |
+    bash -lc '
+    set -e
+    users=(
+${users_yaml}
+    )
+    for entry in "${users[@]}"; do :; done
+    '
+  - |
+    bash -lc '
+    set -e
+    while read -r line; do
+      name=$(echo "$line" | sed -n "s/.*name: \"\(.*\)\".*/\1/p")
+      pass=$(echo "$line" | sed -n "s/.*password: \"\(.*\)\".*/\1/p")
+      if [ -n "$name" ] && [ -n "$pass" ]; then
+        id -u "$name" >/dev/null 2>&1 || useradd -m -s /bin/bash "$name"
+        echo "$name:$pass" | chpasswd
+        usermod -aG sudo "$name"
+      fi
+    done <<'EOF_USERS'
+${users_yaml}
+EOF_USERS
+    '
