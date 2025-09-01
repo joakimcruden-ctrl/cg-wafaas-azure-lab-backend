@@ -7,7 +7,9 @@ Quick start
 - Prereqs: Azure subscription, `az` logged in, Terraform >= 1.3 installed.
 - Edit `users.txt` with one name per line.
 - Optionally edit `terraform.tfvars` (location, prefix, SSH CIDR).
-- Run: `./scripts/deploy.sh` or `terraform -chdir=terraform init && terraform -chdir=terraform apply -auto-approve`.
+- Linux/macOS: run `./scripts/deploy.sh`.
+- Windows (PowerShell): run `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1`.
+- Alternative (any OS): `terraform -chdir=terraform init && terraform -chdir=terraform apply -auto-approve`.
 
 Outputs
 - `terraform/credentials.csv`: username, password, API VM IP/FQDN, attacker VM IP/FQDN.
@@ -19,6 +21,7 @@ Notes
 - SSH password auth is enabled. Restrict access via `allowed_ssh_cidr`.
 - Each API VM creates exactly one attendee user based on `users.txt`; the attacker VM creates all attendee users. All attendee users are added to `sudo` with NOPASSWD.
 - Public DNS labels are set as `${prefix}-{username}.${region}.cloudapp.azure.com` for convenience.
+ - The PowerShell script validates prerequisites (Terraform >= 1.3, Azure CLI installed and logged in, and a non-empty `users.txt`) before applying.
 
 Switching attacker VM to Kali
 - Set `use_kali_attacker = true` in `terraform/terraform.tfvars`.
