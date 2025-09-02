@@ -90,6 +90,17 @@ function Ensure-AzSubscription {
     }
 }
 
+function Accept-KaliTerms {
+    param([bool] $Enabled)
+    if (-not $Enabled) { return }
+    try {
+        Write-Host "Accepting Kali marketplace terms (if needed)..."
+        & az vm image terms accept --publisher kali-linux --offer kali --plan kali --only-show-errors | Out-Null
+    } catch {
+        Write-Warning "Failed to accept Kali marketplace terms automatically. They may already be accepted, or the CLI lacks permissions."
+    }
+}
+
 function Get-PrefixFromConfig {
     param([string] $TfDir)
     $tfvars = Join-Path $TfDir "terraform.tfvars"
@@ -191,17 +202,6 @@ try {
     Write-Host ""
     $credentialsFile = & $TerraformExe output -raw credentials_file
     Write-Host "Deployment complete. Credentials file: $credentialsFile"
-
-function Accept-KaliTerms {
-    param([bool] $Enabled)
-    if (-not $Enabled) { return }
-    try {
-        Write-Host "Accepting Kali marketplace terms (if needed)..."
-        & az vm image terms accept --publisher kali-linux --offer kali --plan kali --only-show-errors | Out-Null
-    } catch {
-        Write-Warning "Failed to accept Kali marketplace terms automatically. They may already be accepted, or the CLI lacks permissions."
-    }
-}
     $attackerEndpoint = & $TerraformExe output -json attacker_endpoint
     Write-Host "Attacker endpoint: $attackerEndpoint"
 
