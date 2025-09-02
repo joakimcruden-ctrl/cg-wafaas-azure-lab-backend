@@ -120,6 +120,18 @@ function Get-PrefixFromConfig {
     return "wafaas-lab"
 }
 
+function Get-TfVarValue {
+    param([string] $TfDir, [string] $Name)
+    $tfvars = Join-Path $TfDir "terraform.tfvars"
+    if (-not (Test-Path -LiteralPath $tfvars)) { return $null }
+    $content = Get-Content -LiteralPath $tfvars -Raw
+    $m = [regex]::Match($content, "(?m)^\s*$Name\s*=\s*\"([^\"]+)\"")
+    if ($m.Success) { return $m.Groups[1].Value }
+    $m2 = [regex]::Match($content, "(?m)^\s*$Name\s*=\s*(true|false)\b")
+    if ($m2.Success) { return $m2.Groups[1].Value }
+    return $null
+}
+
 function Require-UsersFile {
     param([string] $Path)
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -162,14 +174,28 @@ try {
     & $TerraformExe init -upgrade
     if ($LASTEXITCODE -ne 0) { throw "Terraform init failed with exit code $LASTEXITCODE." }
 
-    # Determine if Kali is enabled (default true unless explicitly set false in terraform.tfvars)
+    # Determine location and if Kali is enabled (default true unless explicitly set false in terraform.tfvars)
+    $location = Get-TfVarValue -TfDir $tfDir -Name 'location'
+    if (-not $location) { $location = 'westeurope' }
     $kaliEnabled = $true
-    $tfvarsPath = Join-Path $tfDir "terraform.tfvars"
-    if (Test-Path -LiteralPath $tfvarsPath) {
-        $content = Get-Content -LiteralPath $tfvarsPath -Raw
-        if ($content -match '(?m)^\s*use_kali_attacker\s*=\s*false\b') { $kaliEnabled = $false }
+    $useKaliVal = Get-TfVarValue -TfDir $tfDir -Name 'use_kali_attacker'
+    if ($useKaliVal -and $useKaliVal -eq 'false') { $kaliEnabled = $false }
+
+    $forceUbuntu = $false
+    if ($kaliEnabled) {
+        try {
+            Write-Host "Checking Kali image availability in region '$location'..."
+            $list = az vm image list --publisher kali-linux --offer kali --sku kali --location $location --all --only-show-errors -o json | ConvertFrom-Json
+            if (-not $list -or $list.Count -eq 0) {
+                Write-Warning "Kali image not available in region '$location'. Falling back to Ubuntu attacker."
+                $forceUbuntu = $true
+            } else {
+                Accept-KaliTerms -Enabled $true
+            }
+        } catch {
+            Write-Warning "Failed to verify Kali availability. Proceeding; if apply fails, re-run with -var=use_kali_attacker=false."
+        }
     }
-    Accept-KaliTerms -Enabled $kaliEnabled
 
     if ($Delete) {
         Write-Host "Destroying Terraform-managed resources (auto-approve)..."
@@ -196,6 +222,7 @@ try {
     Write-Host "Applying Terraform..."
     $tfArgs = @('-auto-approve')
     if ($OnlyAttacker) { $tfArgs += '-var=only_attacker=true' }
+    if ($forceUbuntu) { $tfArgs += '-var=use_kali_attacker=false' }
     & $TerraformExe apply @tfArgs
     if ($LASTEXITCODE -ne 0) { throw "Terraform apply failed with exit code $LASTEXITCODE." }
 

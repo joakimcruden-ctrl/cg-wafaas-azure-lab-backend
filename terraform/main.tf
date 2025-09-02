@@ -127,13 +127,7 @@ data "azurerm_platform_image" "ubuntu" {
   sku       = "22_04-lts"
 }
 
-data "azurerm_platform_image" "kali" {
-  count     = var.use_kali_attacker ? 1 : 0
-  location  = azurerm_resource_group.rg.location
-  publisher = "kali-linux"
-  offer     = "kali"
-  sku       = "kali"
-}
+// Note: Skip data source lookup for Kali to avoid plan-time failures if listings are empty for the region
 
 # Cloud-init templates
 locals {
@@ -168,18 +162,18 @@ resource "azurerm_linux_virtual_machine" "attacker" {
   network_interface_ids = [azurerm_network_interface.attacker.id]
 
   source_image_reference {
-    publisher = var.use_kali_attacker ? data.azurerm_platform_image.kali[0].publisher : data.azurerm_platform_image.ubuntu.publisher
-    offer     = var.use_kali_attacker ? data.azurerm_platform_image.kali[0].offer : data.azurerm_platform_image.ubuntu.offer
-    sku       = var.use_kali_attacker ? data.azurerm_platform_image.kali[0].sku : data.azurerm_platform_image.ubuntu.sku
+    publisher = var.use_kali_attacker ? "kali-linux" : data.azurerm_platform_image.ubuntu.publisher
+    offer     = var.use_kali_attacker ? "kali"       : data.azurerm_platform_image.ubuntu.offer
+    sku       = var.use_kali_attacker ? "kali"       : data.azurerm_platform_image.ubuntu.sku
     version   = "latest"
   }
 
   dynamic "plan" {
     for_each = var.use_kali_attacker ? [1] : []
     content {
-      name      = data.azurerm_platform_image.kali[0].sku
-      product   = data.azurerm_platform_image.kali[0].offer
-      publisher = data.azurerm_platform_image.kali[0].publisher
+      name      = "kali"
+      product   = "kali"
+      publisher = "kali-linux"
     }
   }
 
