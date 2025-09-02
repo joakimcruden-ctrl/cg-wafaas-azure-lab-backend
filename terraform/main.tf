@@ -157,6 +157,7 @@ locals {
     user_pass_pairs      = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
     seed_script_content  = try(file("${path.module}/../seed-api-discovery.sh"), "")
   })
+  attacker_post_b64 = base64encode(local.attacker_post_script)
 }
 
 # Trigger to recreate attacker VM when cloud-init changes
@@ -220,8 +221,8 @@ resource "azurerm_virtual_machine_extension" "attacker_post" {
 
   settings = jsonencode({
     commandToExecute = format(
-      "bash -lc 'cat >/tmp/attacker-post.sh <<\"EOF\"\n%s\nEOF\nsed -i \"s/\\r$//\" /tmp/attacker-post.sh\nchmod 0755 /tmp/attacker-post.sh\nbash /tmp/attacker-post.sh'",
-      replace(local.attacker_post_script, "'", "'\"'\"'")
+      "bash -lc 'printf %%s \"%s\" | base64 -d > /tmp/attacker-post.sh; sed -i \"s/\\r$//\" /tmp/attacker-post.sh; chmod 0755 /tmp/attacker-post.sh; bash /tmp/attacker-post.sh'",
+      local.attacker_post_b64
     )
   })
 
