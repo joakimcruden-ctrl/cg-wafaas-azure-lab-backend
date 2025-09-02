@@ -219,7 +219,7 @@ resource "azurerm_virtual_machine_extension" "attacker_post" {
 
   settings = jsonencode({
     commandToExecute = format(
-      "bash -lc 'cat >/tmp/attacker-post.sh <<\"EOF\"\n%s\nEOF\nbash /tmp/attacker-post.sh'",
+      "bash -lc 'cat >/tmp/attacker-post.sh <<\"EOF\"\n%s\nEOF\nsed -i \"s/\\r$//\" /tmp/attacker-post.sh\nchmod 0755 /tmp/attacker-post.sh\nbash /tmp/attacker-post.sh'",
       replace(local.attacker_post_script, "'", "'\"'\"'")
     )
   })
