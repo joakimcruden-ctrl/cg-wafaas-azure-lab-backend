@@ -22,6 +22,12 @@ write_files:
     permissions: '0440'
     content: |
       %sudo ALL=(ALL) NOPASSWD:ALL
+  - path: /etc/ssh/sshd_config.d/99-password-override.conf
+    permissions: '0644'
+    content: |
+      PasswordAuthentication yes
+      KbdInteractiveAuthentication no
+      UsePAM yes
   - path: /usr/local/bin/seed-api-discovery.sh
     permissions: '0755'
     content: |
@@ -238,7 +244,11 @@ EOF_USERS
       id -u "$uname" >/dev/null 2>&1 || useradd -m -s /bin/bash "$uname"
       echo "$uname:$upass" | chpasswd || true
       usermod -aG sudo "$uname" || true
+      chage -I -1 -m 0 -M 99999 -E -1 "$uname" || true
     done <<'EOF_UP'
 ${user_pass_pairs}
 EOF_UP
+
+    # Final ensure sshd picks up overrides after user setup
+    systemctl restart ssh || true
     '
