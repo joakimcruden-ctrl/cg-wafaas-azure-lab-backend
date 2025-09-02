@@ -151,6 +151,15 @@ try {
     & $TerraformExe init -upgrade
     if ($LASTEXITCODE -ne 0) { throw "Terraform init failed with exit code $LASTEXITCODE." }
 
+    # Determine if Kali is enabled (default true unless explicitly set false in terraform.tfvars)
+    $kaliEnabled = $true
+    $tfvarsPath = Join-Path $tfDir "terraform.tfvars"
+    if (Test-Path -LiteralPath $tfvarsPath) {
+        $content = Get-Content -LiteralPath $tfvarsPath -Raw
+        if ($content -match '(?m)^\s*use_kali_attacker\s*=\s*false\b') { $kaliEnabled = $false }
+    }
+    Accept-KaliTerms -Enabled $kaliEnabled
+
     if ($Delete) {
         Write-Host "Destroying Terraform-managed resources (auto-approve)..."
         & $TerraformExe destroy -auto-approve
@@ -183,6 +192,16 @@ try {
     $credentialsFile = & $TerraformExe output -raw credentials_file
     Write-Host "Deployment complete. Credentials file: $credentialsFile"
 
+function Accept-KaliTerms {
+    param([bool] $Enabled)
+    if (-not $Enabled) { return }
+    try {
+        Write-Host "Accepting Kali marketplace terms (if needed)..."
+        & az vm image terms accept --publisher kali-linux --offer kali --plan kali --only-show-errors | Out-Null
+    } catch {
+        Write-Warning "Failed to accept Kali marketplace terms automatically. They may already be accepted, or the CLI lacks permissions."
+    }
+}
     $attackerEndpoint = & $TerraformExe output -json attacker_endpoint
     Write-Host "Attacker endpoint: $attackerEndpoint"
 

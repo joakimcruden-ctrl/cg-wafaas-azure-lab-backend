@@ -43,6 +43,20 @@ cd "$(dirname "$0")/../terraform"
 echo "Initializing Terraform..."
 "$TF_EXE" init -upgrade
 
+# Accept Kali marketplace terms if enabled (default true)
+USE_KALI=true
+if [[ -f terraform.tfvars ]] && grep -Eq '^\s*use_kali_attacker\s*=\s*false\b' terraform.tfvars; then
+  USE_KALI=false
+fi
+if [[ "$USE_KALI" == true ]]; then
+  if command -v az >/dev/null 2>&1; then
+    echo "Accepting Kali marketplace terms (if needed)..."
+    az vm image terms accept --publisher kali-linux --offer kali --plan kali --only-show-errors >/dev/null 2>&1 || true
+  else
+    echo "Azure CLI not found; cannot auto-accept Kali Marketplace terms. Ensure terms are accepted for 'kali-linux:kali:kali'."
+  fi
+fi
+
 echo "Applying Terraform..."
 if [[ "$ONLY_ATTACKER" == true ]]; then
   "$TF_EXE" apply -auto-approve -var=only_attacker=true

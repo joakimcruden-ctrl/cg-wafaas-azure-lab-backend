@@ -35,9 +35,9 @@ variable "attacker_vm_size" {
 }
 
 variable "use_kali_attacker" {
-  description = "If true, use Kali marketplace image for attacker (requires accepted terms). Otherwise Ubuntu."
+  description = "If true, use Kali marketplace image for attacker (will accept terms via scripts). Otherwise Ubuntu."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "only_attacker" {

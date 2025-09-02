@@ -174,6 +174,15 @@ resource "azurerm_linux_virtual_machine" "attacker" {
     version   = "latest"
   }
 
+  dynamic "plan" {
+    for_each = var.use_kali_attacker ? [1] : []
+    content {
+      name      = data.azurerm_platform_image.kali[0].sku
+      product   = data.azurerm_platform_image.kali[0].offer
+      publisher = data.azurerm_platform_image.kali[0].publisher
+    }
+  }
+
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"

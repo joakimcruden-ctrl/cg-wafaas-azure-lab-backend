@@ -29,15 +29,15 @@ Outputs
 
 Notes
 - API VMs run VAmPI in Docker and expose it on port 80.
-- Attacker VM is Ubuntu with common tools (nmap, sqlmap, gobuster, ffuf, curl, httpie, jq, git, Docker). Swap to Kali by changing variables and accepting Marketplace terms.
+- Attacker VM defaults to Kali Linux with common tools (nmap, sqlmap, gobuster, ffuf, curl, httpie, jq, git, Docker). Set `use_kali_attacker = false` to use Ubuntu instead. The deploy scripts automatically accept the Kali Marketplace terms when enabled.
 - SSH password auth is enabled. Restrict access via `allowed_ssh_cidr`.
 - Each API VM creates exactly one attendee user based on `users.txt`; the attacker VM creates all attendee users. All attendee users are added to `sudo` with NOPASSWD.
 - Public DNS labels are set as `${prefix}-{username}.${region}.cloudapp.azure.com` for convenience.
  - The PowerShell script validates prerequisites (Terraform >= 1.3, Azure CLI installed and logged in, and a non-empty `users.txt`) before applying.
 
-Switching attacker VM to Kali
-- Set `use_kali_attacker = true` in `terraform/terraform.tfvars`.
-- Ensure your subscription has accepted the Kali Marketplace terms for the chosen region.
+Switching attacker VM OS
+- Default is Kali (`use_kali_attacker = true`).
+- To use Ubuntu, set `use_kali_attacker = false` in `terraform/terraform.tfvars`.
 
 Security
 - The generated `outputs/credentials.csv` contains passwords; handle and store securely.
