@@ -125,9 +125,14 @@ function Get-TfVarValue {
     $tfvars = Join-Path $TfDir "terraform.tfvars"
     if (-not (Test-Path -LiteralPath $tfvars)) { return $null }
     $content = Get-Content -LiteralPath $tfvars -Raw
-    $m = [regex]::Match($content, "(?m)^\s*$Name\s*=\s*\"([^\"]+)\"")
+
+    $nameEsc = [regex]::Escape($Name)
+    $patternStr1 = '(?m)^\s*' + $nameEsc + '\s*=\s*"([^"]+)"'
+    $m = [regex]::Match($content, $patternStr1)
     if ($m.Success) { return $m.Groups[1].Value }
-    $m2 = [regex]::Match($content, "(?m)^\s*$Name\s*=\s*(true|false)\b")
+
+    $patternStr2 = '(?m)^\s*' + $nameEsc + '\s*=\s*(true|false)\b'
+    $m2 = [regex]::Match($content, $patternStr2)
     if ($m2.Success) { return $m2.Groups[1].Value }
     return $null
 }
