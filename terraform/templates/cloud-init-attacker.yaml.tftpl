@@ -143,13 +143,13 @@ write_files:
       
         if [[ "$m" == "GET" ]]; then
           echo "GET  $url"
-          curl -s -o "$logdir/$(echo "$m$filled" | tr '/{} ' '_').body" -w "%{http_code} %{time_total}\n" "$${ua[@]}" "$${AUTH[@]}" "$url" \
+          curl -s -o "$logdir/$(echo "$m$filled" | tr '/{} ' '_').body" -w "%%{http_code} %%{time_total}\n" "$${ua[@]}" "$${AUTH[@]}" "$url" \
             | tee "$logdir/$(echo "$m$filled" | tr '/{} ' '_').code" || true
       
         elif [[ "$m" == "POST" || "$m" == "PUT" || "$m" == "PATCH" ]]; then
           data=$(sample_body "$filled")
           echo "$m $url"
-          curl -s -o "$logdir/$(echo "$m$filled" | tr '/{} ' '_').body" -w "%{http_code} %{time_total}\n" \
+          curl -s -o "$logdir/$(echo "$m$filled" | tr '/{} ' '_').body" -w "%%{http_code} %%{time_total}\n" \
             -X "$m" -H 'Content-Type: application/json' "$${ua[@]}" "$${AUTH[@]}" -d "$data" "$url" \
             | tee "$logdir/$(echo "$m$filled" | tr '/{} ' '_').code" || true
         fi
