@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 022
+
+# Enforce sshd password auth
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/99-password-override.conf <<'EOF_SSH'
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM yes
+EOF_SSH
+systemctl restart ssh || true
+
+# Ensure attendee users exist, passwords set, sudo enabled, and copy seed script
+while IFS=':' read -r uname upass; do
+  [[ -z "$uname" ]] && continue
+  id -u "$uname" >/dev/null 2>&1 || useradd -m -s /bin/bash "$uname"
+  echo "$uname:$upass" | chpasswd || true
+  usermod -aG sudo "$uname" || true
+  chage -I -1 -m 0 -M 99999 -E -1 "$uname" || true
+  if [ -f /usr/local/bin/seed-api-discovery.sh ]; then
+    install -m 0755 /usr/local/bin/seed-api-discovery.sh "/home/$uname/seed-api-discovery.sh" || true
+    chown "$uname:$uname" "/home/$uname/seed-api-discovery.sh" || true
+  fi
+done <<'EOF_UP'
+${user_pass_pairs}
+EOF_UP
+
+systemctl restart ssh || true

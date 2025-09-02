@@ -152,6 +152,10 @@ locals {
     usernames_lines = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}"])
     user_pass_pairs = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
   })
+
+  attacker_post_script = templatefile("${path.module}/templates/attacker-post.sh.tftpl", {
+    user_pass_pairs = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
+  })
 }
 
 # Trigger to recreate attacker VM when cloud-init changes
@@ -214,41 +218,10 @@ resource "azurerm_virtual_machine_extension" "attacker_post" {
   auto_upgrade_minor_version = true
 
   settings = jsonencode({
-    commandToExecute = join("\n", [
-      "/bin/bash -lc \"cat > /tmp/attacker-post.sh << 'EOS'\"",
-      <<-EOC
-#!/usr/bin/env bash
-set -euo pipefail
-umask 022
-
-# Enforce sshd password auth
-mkdir -p /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/99-password-override.conf <<'EOF_SSH'
-PasswordAuthentication yes
-KbdInteractiveAuthentication no
-UsePAM yes
-EOF_SSH
-systemctl restart ssh || true
-
-# Ensure attendee users exist, passwords set, sudo enabled, and copy seed script
-while IFS=':' read -r uname upass; do
-  [[ -z "$uname" ]] && continue
-  id -u "$uname" >/dev/null 2>&1 || useradd -m -s /bin/bash "$uname"
-  echo "$uname:$upass" | chpasswd || true
-  usermod -aG sudo "$uname" || true
-  chage -I -1 -m 0 -M 99999 -E -1 "$uname" || true
-  if [ -f /usr/local/bin/seed-api-discovery.sh ]; then
-    install -m 0755 /usr/local/bin/seed-api-discovery.sh "/home/$uname/seed-api-discovery.sh" || true
-    chown "$uname:$uname" "/home/$uname/seed-api-discovery.sh" || true
-  fi
-done <<'EOF_UP'
-${local.user_usernames != null ? join("\n", [for u in local.user_list : format("%s:%s", lookup(local.user_usernames, u), random_password.user_pw[u].result)]) : ""}
-EOF_UP
-
-systemctl restart ssh || true
-EOC,
-      "bash /tmp/attacker-post.sh"
-    ])
+    commandToExecute = format(
+      "bash -lc 'cat >/tmp/attacker-post.sh <<\"EOF\"\n%s\nEOF\nbash /tmp/attacker-post.sh'",
+      replace(local.attacker_post_script, "'", "'\"'\"'")
+    )
   })
 
   depends_on = [azurerm_linux_virtual_machine.attacker]
