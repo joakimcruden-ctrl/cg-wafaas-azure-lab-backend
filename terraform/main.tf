@@ -147,6 +147,7 @@ locals {
       ])
     ])
     chpasswd_list = join("\n", [for u in local.user_list : "    ${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
+    usernames_lines = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}"])
   })
 }
 
