@@ -78,7 +78,7 @@ write_files:
       
       # 3) Get an auth token (if login exists); otherwise continue unauthenticated
       TOKEN=""
-      if curl -s -m 5 -o /dev/null -w "%{http_code}" "$BASE/users/v1/login" | grep -qE '200|401|404'; then
+      if curl -s -m 5 -o /dev/null -w "%%{http_code}" "$BASE/users/v1/login" | grep -qE '200|401|404'; then
         TOKEN="$(curl -s -X POST "$BASE/users/v1/login" \
           -H 'Content-Type: application/json' \
           -d "{\"username\":\"$API_USER\",\"password\":\"$API_PASS\"}" | jq -r '.token // empty' || true)"
