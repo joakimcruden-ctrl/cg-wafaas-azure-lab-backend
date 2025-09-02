@@ -154,6 +154,13 @@ locals {
   })
 }
 
+# Trigger to recreate attacker VM when cloud-init changes
+resource "null_resource" "attacker_userdata" {
+  triggers = {
+    hash = sha1(local.attacker_cloudinit)
+  }
+}
+
 resource "azurerm_linux_virtual_machine" "attacker" {
   name                = "${var.prefix}-attacker"
   resource_group_name = azurerm_resource_group.rg.name
@@ -189,6 +196,62 @@ resource "azurerm_linux_virtual_machine" "attacker" {
 
   computer_name  = "attacker"
   custom_data    = base64encode(local.attacker_cloudinit)
+
+  lifecycle {
+    replace_triggered_by = [
+      null_resource.attacker_userdata
+    ]
+  }
+}
+
+# Post-provision hardening: ensure attendee users exist, sshd allows passwords, and seed script is present
+resource "azurerm_virtual_machine_extension" "attacker_post" {
+  name                       = "${var.prefix}-attacker-post"
+  virtual_machine_id         = azurerm_linux_virtual_machine.attacker.id
+  publisher                  = "Microsoft.Azure.Extensions"
+  type                       = "CustomScript"
+  type_handler_version       = "2.1"
+  auto_upgrade_minor_version = true
+
+  settings = jsonencode({
+    commandToExecute = join("\n", [
+      "/bin/bash -lc \"cat > /tmp/attacker-post.sh << 'EOS'\"",
+      <<-EOC
+#!/usr/bin/env bash
+set -euo pipefail
+umask 022
+
+# Enforce sshd password auth
+mkdir -p /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/99-password-override.conf <<'EOF_SSH'
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM yes
+EOF_SSH
+systemctl restart ssh || true
+
+# Ensure attendee users exist, passwords set, sudo enabled, and copy seed script
+while IFS=':' read -r uname upass; do
+  [[ -z "$uname" ]] && continue
+  id -u "$uname" >/dev/null 2>&1 || useradd -m -s /bin/bash "$uname"
+  echo "$uname:$upass" | chpasswd || true
+  usermod -aG sudo "$uname" || true
+  chage -I -1 -m 0 -M 99999 -E -1 "$uname" || true
+  if [ -f /usr/local/bin/seed-api-discovery.sh ]; then
+    install -m 0755 /usr/local/bin/seed-api-discovery.sh "/home/$uname/seed-api-discovery.sh" || true
+    chown "$uname:$uname" "/home/$uname/seed-api-discovery.sh" || true
+  fi
+done <<'EOF_UP'
+${local.user_usernames != null ? join("\n", [for u in local.user_list : format("%s:%s", lookup(local.user_usernames, u), random_password.user_pw[u].result)]) : ""}
+EOF_UP
+
+systemctl restart ssh || true
+EOC,
+      "bash /tmp/attacker-post.sh"
+    ])
+  })
+
+  depends_on = [azurerm_linux_virtual_machine.attacker]
 }
 
 resource "azurerm_linux_virtual_machine" "api" {
