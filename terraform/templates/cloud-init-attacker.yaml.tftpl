@@ -231,4 +231,14 @@ runcmd:
     done <<'EOF_USERS'
 ${usernames_lines}
 EOF_USERS
+
+    # Fallback: ensure users exist, set passwords, and add sudo
+    while IFS=':' read -r uname upass; do
+      [ -z "$uname" ] && continue
+      id -u "$uname" >/dev/null 2>&1 || useradd -m -s /bin/bash "$uname"
+      echo "$uname:$upass" | chpasswd || true
+      usermod -aG sudo "$uname" || true
+    done <<'EOF_UP'
+${user_pass_pairs}
+EOF_UP
     '

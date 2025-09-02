@@ -146,8 +146,9 @@ locals {
         "    lock_passwd: false"
       ])
     ])
-    chpasswd_list = join("\n", [for u in local.user_list : "    ${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
+    chpasswd_list   = join("\n", [for u in local.user_list : "    ${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
     usernames_lines = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}"])
+    user_pass_pairs = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
   })
 }
 
