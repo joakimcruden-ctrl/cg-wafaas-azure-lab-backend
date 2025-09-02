@@ -12,11 +12,9 @@ EOF_SSH
 systemctl restart ssh || true
 
 # Install the seed script from deployment package (if provided)
-if [ -n "${seed_script_content}" ]; then
-cat > /usr/local/bin/seed-api-discovery.sh <<'EOF_SEED'
-${seed_script_content}
-EOF_SEED
-chmod 0755 /usr/local/bin/seed-api-discovery.sh
+if [ -n "${seed_b64}" ]; then
+  printf %s "${seed_b64}" | base64 -d > /usr/local/bin/seed-api-discovery.sh
+  chmod 0755 /usr/local/bin/seed-api-discovery.sh
 fi
 
 # Ensure attendee users exist, passwords set, sudo enabled, and copy seed script
