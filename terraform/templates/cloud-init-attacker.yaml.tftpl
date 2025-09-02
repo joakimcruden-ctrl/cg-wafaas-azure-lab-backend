@@ -36,3 +36,49 @@ ${chpasswd_list}
 runcmd:
   - [ systemctl, restart, ssh ]
   - [ systemctl, enable, --now, docker ]
+  - |
+    bash -lc '
+    set -u
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends software-properties-common apt-transport-https ca-certificates gnupg lsb-release || true
+    pkgs="tmux zsh fzf ripgrep fd-find bat jq yq htop btop lsof strace ltrace git python3 python3-pip python3-venv pipx golang-go rustc cargo build-essential cmake nasm mingw-w64 upx-ucl docker.io docker-compose docker-compose-plugin podman neovim curl wget aria2 socat netcat-openbsd openssl nmap theharvester spiderfoot recon-ng rustscan masscan zmap dnsrecon dnsenum nbtscan smbclient enum4linux ldap-utils burpsuite zaproxy mitmproxy ffuf feroxbuster gobuster wfuzz sqlmap nikto wpscan joomscan hashcat john hydra medusa seclists wordlists cewl crunch hashid hashcat-utils python3-impacket responder samba samba-common-bin aircrack-ng hcxdumptool hcxpcapngtool reaver kismet bluez bettercap btlejack gnuradio gqrx-sdr rfcat wireshark tshark tcpdump android-tools-adb android-tools-fastboot apktool jadx ideviceinstaller libimobiledevice-utils ghidra radare2 cutter binwalk binutils file vim-common patchelf gdb lldb afl++ honggfuzz radamsa sleuthkit autopsy bulk-extractor foremost scalpel plaso yara age gnupg hashdeep bsdextrautils rclone openssh-client rsync pandoc"
+    for p in $pkgs; do
+      if ! apt-cache show "$p" >/dev/null 2>&1; then
+        echo "Package $p not found in apt cache; skipping"
+        continue
+      fi
+      apt-get install -y --no-install-recommends "$p" || echo "Failed to install $p; continuing"
+    done
+
+    # Secondary install strategies
+    # Symlinks for common Debian names
+    ln -sf /usr/bin/fdfind /usr/local/bin/fd || true
+    ln -sf /usr/bin/batcat /usr/local/bin/bat || true
+
+    # Ensure pipx global installs are available for all users
+    if command -v pipx >/dev/null 2>&1; then
+      pipx ensurepath || true
+      pipx install --global theHarvester || true
+      pipx install --global spiderfoot || true
+      pipx install --global recon-ng || true
+      pipx install --global wfuzz || true
+    fi
+
+    # Go-based tools: install latest into /usr/local/bin
+    if command -v go >/dev/null 2>&1; then
+      export GOBIN=/usr/local/bin
+      go install github.com/ffuf/ffuf/v2@latest || true
+      go install github.com/OJ/gobuster/v3@latest || true
+      go install github.com/bettercap/bettercap@latest || true
+    fi
+
+    # Rust-based tools: install and copy binaries into /usr/local/bin
+    if command -v cargo >/dev/null 2>&1; then
+      cargo install feroxbuster || true
+      cargo install rustscan || true
+      for bin in /root/.cargo/bin/*; do
+        [ -f "$bin" ] && install -m 0755 "$bin" /usr/local/bin/ || true
+      done
+    fi
+    '
