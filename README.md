@@ -9,7 +9,7 @@ Quick start
 - Optionally edit `terraform.tfvars` (location, prefix, SSH CIDR).
 - Linux/macOS: run `./scripts/deploy.sh`.
 - Windows (PowerShell): run `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1`.
-- Note: The PowerShell script uses Terraform from PATH if available; otherwise it looks for `terraform.exe` in `C:\Program Files\Terraform`.
+- Terraform binary resolution: both scripts honor `TERRAFORM_EXE` env var; otherwise they use `terraform` from PATH; if neither is found, they prompt for the full path interactively.
 - If you have multiple Azure subscriptions or no default is set, pass your subscription explicitly: `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1 -Subscription "<subscription id or exact name>"`.
 
 Only deploy the attacker VM

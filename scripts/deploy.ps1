@@ -21,12 +21,22 @@ function Require-Command {
 }
 
 function Get-TerraformCommand {
-    param([string] $FixedDir = "C:\\Program Files\\Terraform")
+    # Priority: $env:TERRAFORM_EXE -> PATH -> prompt user for path
+    $envPath = $env:TERRAFORM_EXE
+    if ($envPath) {
+        if (Test-Path -LiteralPath $envPath) { return $envPath }
+        Write-Warning "TERRAFORM_EXE is set to '$envPath' but does not exist."
+    }
+
     $cmd = Get-Command terraform -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Path }
-    $candidate = Join-Path $FixedDir "terraform.exe"
-    if (Test-Path -LiteralPath $candidate) { return $candidate }
-    throw "Terraform not found in PATH or at '$FixedDir'. Install Terraform to '$FixedDir' or add it to PATH."
+
+    while ($true) {
+        $inputPath = Read-Host -Prompt "Enter full path to terraform executable"
+        if ([string]::IsNullOrWhiteSpace($inputPath)) { continue }
+        if (Test-Path -LiteralPath $inputPath) { return $inputPath }
+        Write-Host "Path '$inputPath' does not exist. Try again." -ForegroundColor Yellow
+    }
 }
 
 function Require-TerraformVersion {
@@ -119,6 +129,7 @@ $usersFile = Join-Path $repoRoot "users.txt"
 # Dependency and environment checks
 Write-Host "Checking prerequisites..."
 ${TerraformExe} = Get-TerraformCommand
+if (-not (Test-Path -LiteralPath ${TerraformExe})) { throw "Terraform executable path '${TerraformExe}' not found." }
 Require-Command -Name az -InstallHint "Install Azure CLI from https://learn.microsoft.com/cli/azure/install-azure-cli."
 Require-TerraformVersion -MinVersion ([Version]::new(1,3,0)) -TerraformExe $TerraformExe
 Require-AzLogin
