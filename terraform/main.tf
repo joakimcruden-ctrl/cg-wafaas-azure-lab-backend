@@ -71,6 +71,8 @@ resource "random_password" "user_pw" {
   for_each = toset(local.user_list)
   length   = 14
   special  = true
+  # Exclude ':' and other problematic chars for chpasswd/useradd parsing
+  override_special = "!@#$%^*()_+-=[]{}.,?"
 }
 
 # Public IPs for attacker and each API
