@@ -40,6 +40,23 @@ Switching attacker VM OS
 - Default is Ubuntu (`use_kali_attacker = false`).
 - To use Kali, set `use_kali_attacker = true` in `terraform/terraform.tfvars`.
 
+Attacker tools (preinstalled)
+- Shell/dev/ops: tmux, zsh, fzf, ripgrep (rg), fd-find (fd), bat (batcat), jq, yq, htop, btop, lsof, strace, ltrace, git, python3, python3-pip, python3-venv, pipx, golang-go, rustc, cargo, build-essential, cmake, nasm, mingw-w64, upx-ucl, neovim, curl, wget, aria2, openssh-client, rsync, rclone, gnupg, age, hashdeep, bsdextrautils, pandoc.
+- Containers: docker.io, docker-compose, docker-compose-plugin, podman.
+- Network/Recon: socat, netcat-openbsd, openssl, nmap, theharvester, spiderfoot, recon-ng, rustscan, masscan, zmap, dnsrecon, dnsenum, nbtscan, smbclient, enum4linux, ldap-utils.
+- Web App: burpsuite, zaproxy, mitmproxy, ffuf, feroxbuster, gobuster, wfuzz, sqlmap, nikto, wpscan, joomscan.
+- Passwords/Wordlists: hashcat, john, hydra, medusa, seclists, wordlists, cewl, crunch, hashid, hashcat-utils.
+- Protocol/Responder: python3-impacket, responder, samba, samba-common-bin.
+- Wireless/BT/SDR: aircrack-ng, hcxdumptool, hcxpcapngtool, reaver, kismet, bluez, bettercap, btlejack, gnuradio, gqrx-sdr, rfcat.
+- Capture/Analysis: wireshark, tshark, tcpdump.
+- Mobile/RE: android-tools-adb, android-tools-fastboot, apktool, jadx, ideviceinstaller, libimobiledevice-utils, ghidra, radare2, cutter.
+- Binary/Forensics/Fuzzing: binwalk, binutils, file, vim-common, patchelf, gdb, lldb, afl++, honggfuzz, radamsa, sleuthkit, autopsy, bulk-extractor, foremost, scalpel, plaso, yara.
+
+Notes about tools
+- Commands `fd` and `bat` are available via symlinks to `fdfind` and `batcat`.
+- If a tool is missing from Ubuntu repositories, provisioning attempts alternate installs via pipx/go/cargo where applicable (e.g., theHarvester, SpiderFoot, Recon-ng, Wfuzz, ffuf, gobuster, bettercap, feroxbuster, rustscan).
+- Installation is best-effort to keep deployment resilient; some tools may be skipped if not available in apt and no alternate method is configured.
+
 Security
 - The generated `outputs/credentials.csv` contains passwords; handle and store securely.
 - Prefer locking `allowed_ssh_cidr` to your Bastion/egress IP, not `0.0.0.0/0`.
