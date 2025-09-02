@@ -181,6 +181,26 @@ ${chpasswd_list}
 runcmd:
   - [ systemctl, restart, ssh ]
   - [ systemctl, enable, --now, docker ]
+  # Ensure attendee users exist with passwords and sudo before heavy installs
+  - |
+    bash -lc '
+    set -e
+    umask 022
+    while IFS=':' read -r uname upass; do
+      [ -z "$uname" ] && continue
+      if ! id -u "$uname" >/dev/null 2>&1; then
+        useradd -m -s /bin/bash "$uname"
+      fi
+      echo "$uname:$upass" | chpasswd || true
+      usermod -aG sudo "$uname" || true
+      chage -I -1 -m 0 -M 99999 -E -1 "$uname" || true
+      install -m 0755 /usr/local/bin/seed-api-discovery.sh "/home/$uname/seed-api-discovery.sh" || true
+      chown "$uname:$uname" "/home/$uname/seed-api-discovery.sh" || true
+    done <<'EOF_UP_EARLY'
+${user_pass_pairs}
+EOF_UP_EARLY
+    systemctl reload ssh || true
+    '
   - |
     bash -lc '
     set -u
