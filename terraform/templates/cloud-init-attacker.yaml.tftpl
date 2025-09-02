@@ -11,6 +11,8 @@ packages:
   - git
   - docker.io
 
+# Ensure SSH password auth is enabled
+ssh_pwauth: true
 write_files:
   - path: /etc/ssh/sshd_config.d/60-password-auth.conf
     permissions: '0644'
@@ -21,29 +23,16 @@ write_files:
     content: |
       %sudo ALL=(ALL) NOPASSWD:ALL
 
+# Create all attendee users with sudo and no password prompt
+users:
+  - default
+${users_block}
+
+chpasswd:
+  list: |
+${chpasswd_list}
+  expire: false
+
 runcmd:
   - [ systemctl, restart, ssh ]
   - [ systemctl, enable, --now, docker ]
-  - |
-    bash -lc '
-    set -e
-    users=(
-${users_yaml}
-    )
-    for entry in "$${users[@]}"; do :; done
-    '
-  - |
-    bash -lc '
-    set -e
-    while read -r line; do
-      name=$(echo "$line" | sed -n "s/.*name: \"\(.*\)\".*/\1/p")
-      pass=$(echo "$line" | sed -n "s/.*password: \"\(.*\)\".*/\1/p")
-      if [ -n "$name" ] && [ -n "$pass" ]; then
-        id -u "$name" >/dev/null 2>&1 || useradd -m -s /bin/bash "$name"
-        echo "$name:$pass" | chpasswd
-        usermod -aG sudo "$name"
-      fi
-    done <<'EOF_USERS'
-${users_yaml}
-EOF_USERS
-    '

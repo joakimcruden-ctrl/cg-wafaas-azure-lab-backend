@@ -40,6 +40,12 @@ variable "use_kali_attacker" {
   default     = false
 }
 
+variable "only_attacker" {
+  description = "If true, deploy only the attacker VM and skip API VMs"
+  type        = bool
+  default     = false
+}
+
 variable "api_admin_username" {
   description = "Admin username for API VMs (not used by attendees)"
   type        = string

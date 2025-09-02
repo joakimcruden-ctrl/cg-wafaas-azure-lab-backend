@@ -1,6 +1,6 @@
 output "api_endpoints" {
   description = "API VM endpoints per user"
-  value = { for u, pip in azurerm_public_ip.api : u => {
+  value = var.only_attacker ? {} : { for u, pip in azurerm_public_ip.api : u => {
     ip   = try(azurerm_linux_virtual_machine.api[u].public_ip_address, null)
     fqdn = pip.fqdn
   } }

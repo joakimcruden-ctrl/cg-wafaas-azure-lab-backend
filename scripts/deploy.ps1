@@ -1,6 +1,7 @@
 param(
     [string] $Subscription,
-    [switch] $Delete
+    [switch] $Delete,
+    [switch] $OnlyAttacker
 )
 
 $ErrorActionPreference = "Stop"
@@ -162,7 +163,9 @@ try {
     }
 
     Write-Host "Applying Terraform..."
-    & $TerraformExe apply -auto-approve
+    $tfArgs = @('-auto-approve')
+    if ($OnlyAttacker) { $tfArgs += '-var=only_attacker=true' }
+    & $TerraformExe apply @tfArgs
     if ($LASTEXITCODE -ne 0) { throw "Terraform apply failed with exit code $LASTEXITCODE." }
 
     Write-Host ""

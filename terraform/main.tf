@@ -84,7 +84,7 @@ resource "azurerm_public_ip" "attacker" {
 }
 
 resource "azurerm_public_ip" "api" {
-  for_each            = { for u in local.user_list : u => u }
+  for_each            = var.only_attacker ? {} : { for u in local.user_list : u => u }
   name                = substr("${var.prefix}-api-${lookup(local.user_labels, each.key)}-pip", 0, 80)
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
@@ -143,7 +143,16 @@ locals {
   }) }
 
   attacker_cloudinit = templatefile("${path.module}/templates/cloud-init-attacker.yaml.tftpl", {
-    users_yaml = join("\n", [for u in local.user_list : "  - { name: \"${lookup(local.user_usernames, u)}\", password: \"${random_password.user_pw[u].result}\" }" ])
+    users_block    = join("\n", [
+      for u in local.user_list : join("\n", [
+        "  - name: \"${lookup(local.user_usernames, u)}\"",
+        "    groups: [sudo]",
+        "    shell: /bin/bash",
+        "    sudo: ALL=(ALL) NOPASSWD:ALL",
+        "    lock_passwd: false"
+      ])
+    ])
+    chpasswd_list = join("\n", [for u in local.user_list : "    ${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
   })
 }
 
@@ -212,8 +221,8 @@ resource "local_file" "credentials" {
   ], [for u in local.user_list : join(",", [
     lookup(local.user_usernames, u),
     random_password.user_pw[u].result,
-    try(azurerm_linux_virtual_machine.api[u].public_ip_address, ""),
-    try(azurerm_public_ip.api[u].fqdn, ""),
+    var.only_attacker ? "" : try(azurerm_linux_virtual_machine.api[u].public_ip_address, ""),
+    var.only_attacker ? "" : try(azurerm_public_ip.api[u].fqdn, ""),
     azurerm_linux_virtual_machine.attacker.public_ip_address,
     azurerm_public_ip.attacker.fqdn
   ])]))

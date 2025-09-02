@@ -12,6 +12,12 @@ Quick start
 - Note: The PowerShell script uses Terraform from PATH if available; otherwise it looks for `terraform.exe` in `C:\Program Files\Terraform`.
 - If you have multiple Azure subscriptions or no default is set, pass your subscription explicitly: `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1 -Subscription "<subscription id or exact name>"`.
 
+Only deploy the attacker VM
+- Use `-onlyattacker` to deploy only the shared attacker VM and skip all API VMs.
+- Linux/macOS: `./scripts/deploy.sh -onlyattacker`
+- Windows (PowerShell): `powershell -ExecutionPolicy Bypass -File .\\scripts\\deploy.ps1 -OnlyAttacker`
+- Equivalent Terraform variable: `-var=only_attacker=true`
+
 Tear down
 - Destroy all assets and delete the resource group: `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1 -Delete`
 - Alternative (any OS): `terraform -chdir=terraform init && terraform -chdir=terraform apply -auto-approve`.
@@ -19,6 +25,7 @@ Tear down
 Outputs
 - `terraform/credentials.csv`: username, password, API VM IP/FQDN, attacker VM IP/FQDN.
 - Terraform outputs also print summary info.
+  - When deploying with `-onlyattacker`, API fields in the CSV are left empty.
 
 Notes
 - API VMs run VAmPI in Docker and expose it on port 80.
