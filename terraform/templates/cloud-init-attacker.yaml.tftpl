@@ -77,6 +77,25 @@ EOF_UP_EARLY
       apt-get install -y --no-install-recommends "$p" || echo "Failed to install $p; continuing"
     done
 
+    # Ensure yq is available (for seed script YAML->JSON conversion)
+    if ! command -v yq >/dev/null 2>&1; then
+      echo "yq not found via apt; attempting binary install..."
+      arch=$(dpkg --print-architecture || echo amd64)
+      url=""
+      case "$arch" in
+        amd64) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" ;;
+        arm64|aarch64) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm64" ;;
+        armhf|armv7l) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm" ;;
+      esac
+      if [ -n "$url" ]; then
+        curl -fsSL "$url" -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq || true
+      fi
+    fi
+    if ! command -v yq >/dev/null 2>&1 && command -v pipx >/dev/null 2>&1; then
+      echo "Installing yq via pipx as fallback..."
+      pipx install yq || true
+    fi
+
     # Secondary install strategies
     # Symlinks for common Debian names
     ln -sf /usr/bin/fdfind /usr/local/bin/fd || true

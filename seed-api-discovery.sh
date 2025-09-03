@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Ensure we are running under bash even if invoked via 'sh'
+[ -n "${BASH_VERSION:-}" ] || exec /usr/bin/env bash "$0" "$@"
+
 set -euo pipefail
 
 BASE="${1:-${S:-}}"
