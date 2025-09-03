@@ -156,6 +156,7 @@ locals {
   attacker_post_script = templatefile("${path.module}/templates/attacker-post.sh.tftpl", {
     user_pass_pairs      = join("\n", [for u in local.user_list : "${lookup(local.user_usernames, u)}:${random_password.user_pw[u].result}"])
     seed_b64             = try(base64encode(file("${path.module}/../seed-api-discovery.sh")), "")
+    seed_url             = var.seed_script_url
   })
   attacker_post_b64 = base64encode(local.attacker_post_script)
 }

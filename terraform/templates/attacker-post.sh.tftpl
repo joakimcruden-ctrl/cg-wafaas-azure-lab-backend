@@ -11,12 +11,22 @@ UsePAM yes
 EOF_SSH
 systemctl restart ssh || true
 
-# Install the seed script from deployment package (if provided)
-if [ -n "${seed_b64}" ]; then
-  printf %s "${seed_b64}" | base64 -d > /usr/local/bin/seed-api-discovery.sh
-  # Normalize potential CRLF line endings and ensure executable
-  sed -i "s/\r$//" /usr/local/bin/seed-api-discovery.sh || true
-  chmod 0755 /usr/local/bin/seed-api-discovery.sh
+# Install the seed script: try downloading from URL, fall back to embedded copy
+SEED_DST="/usr/local/bin/seed-api-discovery.sh"
+if [ -n "${seed_url}" ]; then
+  echo "Attempting to download seed script from ${seed_url}..."
+  if curl -fsSL "${seed_url}" -o "$SEED_DST"; then
+    sed -i "s/\r$//" "$SEED_DST" || true
+    chmod 0755 "$SEED_DST"
+  else
+    echo "Download failed; will use embedded seed script if available."
+  fi
+fi
+
+if [ ! -x "$SEED_DST" ] && [ -n "${seed_b64}" ]; then
+  printf %s "${seed_b64}" | base64 -d > "$SEED_DST"
+  sed -i "s/\r$//" "$SEED_DST" || true
+  chmod 0755 "$SEED_DST"
 fi
 
 # Ensure prerequisites for seed script are installed: curl, jq, yq

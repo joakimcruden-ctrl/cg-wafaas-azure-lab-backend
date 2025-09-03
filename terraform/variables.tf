@@ -57,3 +57,9 @@ variable "attacker_admin_username" {
   type        = string
   default     = "labadmin"
 }
+
+variable "seed_script_url" {
+  description = "Optional URL to download the seed-api-discovery.sh onto the attacker VM. If empty or download fails, falls back to the embedded script."
+  type        = string
+  default     = ""
+}

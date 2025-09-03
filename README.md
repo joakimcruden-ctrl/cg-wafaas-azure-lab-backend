@@ -27,6 +27,11 @@ Outputs
 - Terraform outputs also print summary info.
   - When deploying with `-onlyattacker`, API fields in the CSV are left empty.
 
+Seed Script Source
+- You can point the attacker VM to download the seeder script directly from your Git repo (or any URL) by setting `seed_script_url` in `terraform/terraform.tfvars`, e.g.:
+  - `seed_script_url = "https://raw.githubusercontent.com/<org>/<repo>/<branch>/seed-api-discovery.sh"`
+- If the URL is empty or the download fails, the VM falls back to the embedded `seed-api-discovery.sh` in this repository.
+
 Services & Access
 - API VMs host two apps behind a reverse proxy on port 80:
   - VAmPI: `http://<api-host>/api` (OpenAPI schema commonly under `/api/openapi.json` or `/api/openapi.yaml`)

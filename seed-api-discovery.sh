@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Ensure we are running under bash even if invoked via 'sh'
+[ -n "${BASH_VERSION:-}" ] || exec /usr/bin/env bash "$0" "$@"
 set -euo pipefail
 
 # ----------------------------------------
@@ -65,7 +67,9 @@ echo "[*] Found schema at: $SCHEMA_URL"
 
 # Download schema to tmp; convert YAML -> JSON if needed
 TMPDIR="$(mktemp -d)"
-cleanup() { rm -rf "$TMPDIR"; }
+# Use explicit path for rm to avoid PATH issues
+RM="/bin/rm"
+cleanup() { "$RM" -rf "$TMPDIR" || true; }
 trap cleanup EXIT
 
 RAW_SCHEMA="$TMPDIR/schema.raw"
@@ -73,29 +77,65 @@ JSON_SCHEMA="$TMPDIR/schema.json"
 
 curl -sSfL "$SCHEMA_URL" -o "$RAW_SCHEMA"
 
+# Tool bootstrap: ensure jq works; for YAML, ensure yq works. If not, fetch static binaries locally.
+JQ_BIN="jq"
+YQ_BIN="yq"
+
+ensure_jq() {
+  if command -v jq >/dev/null 2>&1 && jq --version >/dev/null 2>&1; then
+    JQ_BIN="jq"; return 0
+  fi
+  local arch
+  arch="$(uname -m || echo x86_64)"
+  local url=""
+  case "$arch" in
+    x86_64|amd64) url="https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64" ;;
+    aarch64|arm64) url="https://github.com/jqlang/jq/releases/latest/download/jq-linux-aarch64" ;;
+  esac
+  if [[ -n "$url" ]]; then
+    curl -fsSL "$url" -o "$TMPDIR/jq" && chmod +x "$TMPDIR/jq" && JQ_BIN="$TMPDIR/jq" && return 0
+  fi
+  return 1
+}
+
+ensure_yq() {
+  if command -v yq >/dev/null 2>&1 && yq --version >/dev/null 2>&1; then
+    YQ_BIN="yq"; return 0
+  fi
+  local arch
+  arch="$(uname -m || echo x86_64)"
+  local url=""
+  case "$arch" in
+    x86_64|amd64) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" ;;
+    aarch64|arm64) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm64" ;;
+    armv7l) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm" ;;
+  esac
+  if [[ -n "$url" ]]; then
+    curl -fsSL "$url" -o "$TMPDIR/yq" && chmod +x "$TMPDIR/yq" && YQ_BIN="$TMPDIR/yq" && return 0
+  fi
+  return 1
+}
+
 # Heuristic: if starts with {, assume JSON; otherwise try yq
 if head -c 1 "$RAW_SCHEMA" | grep -q '{'; then
   cp "$RAW_SCHEMA" "$JSON_SCHEMA"
 else
-  if ! command -v yq >/dev/null 2>&1; then
-    echo "[!] 'yq' is required to convert YAML to JSON. Please install yq." >&2
+  if ! ensure_yq; then
+    echo "[!] 'yq' is required to convert YAML to JSON and could not be installed automatically." >&2
     exit 1
   fi
-  yq -o=json '.' "$RAW_SCHEMA" > "$JSON_SCHEMA"
+  "$YQ_BIN" -o=json '.' "$RAW_SCHEMA" > "$JSON_SCHEMA"
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "[!] 'jq' is required. Please install jq." >&2
-  exit 1
-fi
+ensure_jq || { echo "[!] 'jq' is required and could not be installed automatically." >&2; exit 1; }
 
 # Optional login to get token (specific to VAmPI, harmless elsewhere if 404)
 TOKEN=""
 LOGIN_URL="$BASE/users/v1/login"
-LOGIN_BODY=$(jq -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}')
+LOGIN_BODY=$("$JQ_BIN" -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}')
 if curl -sS --max-time 5 -H 'Content-Type: application/json' -o "$TMPDIR/login.body" -w '%{http_code}' \
   -X POST "$LOGIN_URL" --data "$LOGIN_BODY" | grep -qE '^(200|201)$'; then
-  TOKEN="$(jq -r '.token // empty' "$TMPDIR/login.body" || true)"
+  TOKEN="$("$JQ_BIN" -r '.token // empty' "$TMPDIR/login.body" || true)"
 fi
 
 if [[ -n "$TOKEN" ]]; then
@@ -152,19 +192,19 @@ build_body() {
   local path="$1"
   case "$path" in
     /users/v1/login)
-      jq -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}'
+      "$JQ_BIN" -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}'
       ;;
     /users/v1/register)
       local uname="user_$RANDOM"
-      jq -n --arg u "$uname" '{username:$u, password:"Lab123!"}'
+      "$JQ_BIN" -n --arg u "$uname" '{username:$u, password:"Lab123!"}'
       ;;
     /books/v1)
       local isbn="978-$RANDOM"
-      jq -n --arg t "Seed Book" --arg a "Seed Author" --arg i "$isbn" \
+      "$JQ_BIN" -n --arg t "Seed Book" --arg a "Seed Author" --arg i "$isbn" \
         '{title:$t, author:$a, isbn:$i}'
       ;;
     *)
-      jq -n '{ping:"seed"}'
+      "$JQ_BIN" -n '{ping:"seed"}'
       ;;
   esac
 }
@@ -173,7 +213,7 @@ echo "[*] Hitting endpoints (this seeds API Discovery on WAF)..."
 
 # Iterate over paths & methods in OpenAPI
 # Produces lines: "<method>\t<path>"
-jq -r --argjson include "$INCLUDE_METHODS" '
+"$JQ_BIN" -r --argjson include "$INCLUDE_METHODS" '
   .paths
   | to_entries[]
   | {p: .key, ops: (.value | to_entries[])}
@@ -189,7 +229,7 @@ while IFS=$'\t' read -r METHOD PATH; do
 done < /dev/null
 
 # Robust extraction: one line per method+path
-mapfile -t LINES < <(jq -r --argjson include "$INCLUDE_METHODS" '
+mapfile -t LINES < <("$JQ_BIN" -r --argjson include "$INCLUDE_METHODS" '
   .paths
   | to_entries[]
   | . as $pathEntry
