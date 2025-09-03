@@ -21,12 +21,16 @@ trap 'rm -rf "$workdir"' EXIT
 echo "[*] Base URL: $BASE"
 
 # 1) Try to fetch an OpenAPI/Swagger spec from common endpoints
+#    Try both at the base and under /api (for path-based routing setups)
 schema_url=""
-for c in "/openapi3.yml" "/openapi.yaml" "/openapi.json" "/swagger.json"; do
-  if curl -sSf -m 5 "$BASE$c" -o "$workdir/schema.raw" 2>/dev/null; then
-    schema_url="$BASE$c"
-    break
-  fi
+for prefix in "" "/api"; do
+  for c in "/openapi3.yml" "/openapi.yaml" "/openapi.json" "/swagger.json"; do
+    url="${BASE%/}${prefix}${c}"
+    if curl -sSf -m 5 "$url" -o "$workdir/schema.raw" 2>/dev/null; then
+      schema_url="$url"
+      break 2
+    fi
+  done
 done
 
 if [[ -z "$schema_url" ]]; then
