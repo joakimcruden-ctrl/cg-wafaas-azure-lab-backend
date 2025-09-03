@@ -1,148 +1,258 @@
 #!/usr/bin/env bash
-# Ensure we are running under bash even if invoked via 'sh'
-[ -n "${BASH_VERSION:-}" ] || exec /usr/bin/env bash "$0" "$@"
-
 set -euo pipefail
 
+# ----------------------------------------
+# API Seeder / Discovery Script
+# - Discovers an OpenAPI/Swagger schema
+# - Enumerates endpoints and exercises them
+# - Intentionally SKIPS DELETEs unless SIMULATE_DELETE=1
+# - Safe mode (SAFE_ONLY=1) hits only GET endpoints
+#
+# Env vars:
+#   S=<base url>                e.g. http://host[:port][/api]
+#   API_USER=<username>         default: morty
+#   API_PASS=<password>         default: morty
+#   SAFE_ONLY=1                 only GETs
+#   SIMULATE_DELETE=1           include DELETEs in a safe "dry run" way
+#   SLEEP=<seconds>             delay between requests, e.g. 0.2
+#
+# Deps: bash, curl, jq, (yq if schema is YAML)
+# ----------------------------------------
+
+API_USER="${API_USER:-morty}"
+API_PASS="${API_PASS:-morty}"
+SLEEP="${SLEEP:-}"
+SAFE_ONLY="${SAFE_ONLY:-}"
+SIMULATE_DELETE="${SIMULATE_DELETE:-}"
+
+# Accept base URL as arg or env S
 BASE="${1:-${S:-}}"
 if [[ -z "$BASE" ]]; then
-  echo "Usage: $0 <base-url>   e.g. $0 https://<sub>.ccsm-e.se"
+  echo "Usage: S=<base_url> $0    or    $0 <base_url>" >&2
   exit 1
 fi
 
-# If no scheme provided, default to http://
-if ! [[ "$BASE" =~ ^https?:// ]]; then
-  BASE="http://$BASE"
+# Normalize: add http:// if missing
+if [[ ! "$BASE" =~ ^https?:// ]]; then
+  BASE="http://${BASE}"
 fi
-
-# Optional creds for VAmPI (defaults work in the demo image)
-API_USER="${API_USER:-morty}"
-API_PASS="${API_PASS:-morty}"
-
-# Tuning knobs
-SAFE_ONLY="${SAFE_ONLY:-0}"     # 1 = GET only, skip POST/PUT/PATCH
-SLEEP="${SLEEP:-0}"             # seconds to sleep between requests (e.g., 0.15)
-
-workdir="$(mktemp -d)"
-trap 'rm -rf "$workdir"' EXIT
 
 echo "[*] Base URL: $BASE"
 
-# 1) Try to fetch an OpenAPI/Swagger spec from common endpoints
-#    Try both at the base and under /api (for path-based routing setups)
-schema_url=""
-for prefix in "" "/api"; do
-  for c in "/openapi3.yml" "/openapi.yaml" "/openapi.json" "/swagger.json"; do
-    url="${BASE%/}${prefix}${c}"
-    if curl -sSf -m 5 "$url" -o "$workdir/schema.raw" 2>/dev/null; then
-      schema_url="$url"
-      break 2
-    fi
-  done
+# Try to find an OpenAPI/Swagger schema
+SCHEMA_PATHS=(
+  "/openapi3.yml"
+  "/openapi.yaml"
+  "/openapi.json"
+  "/swagger.json"
+)
+
+SCHEMA_URL=""
+for p in "${SCHEMA_PATHS[@]}"; do
+  url="$BASE$p"
+  if curl -sSfL --max-time 5 "$url" >/dev/null 2>&1; then
+    SCHEMA_URL="$url"
+    break
+  fi
 done
 
-if [[ -z "$schema_url" ]]; then
-  echo "[!] Could not auto-find an OpenAPI schema at $BASE."
-  echo "    Tip: copy it from the container (docker cp ...) and host it temporarily; then re-run."
-  exit 2
+if [[ -z "$SCHEMA_URL" ]]; then
+  echo "[!] Could not find OpenAPI/Swagger schema under $BASE (tried: ${SCHEMA_PATHS[*]})" >&2
+  exit 1
 fi
 
-echo "[*] Found schema at: $schema_url"
+echo "[*] Found schema at: $SCHEMA_URL"
 
-# 2) Normalize to JSON (requires yq if YAML)
-if [[ "$schema_url" == *.yml || "$schema_url" == *.yaml ]]; then
-  if ! command -v yq >/dev/null 2>&1; then
-    echo "[!] yq is required to convert YAML schema to JSON. Please install yq and re-run."
-    exit 3
-  fi
-  yq -o=json '.' "$workdir/schema.raw" > "$workdir/schema.json"
+# Download schema to tmp; convert YAML -> JSON if needed
+TMPDIR="$(mktemp -d)"
+cleanup() { rm -rf "$TMPDIR"; }
+trap cleanup EXIT
+
+RAW_SCHEMA="$TMPDIR/schema.raw"
+JSON_SCHEMA="$TMPDIR/schema.json"
+
+curl -sSfL "$SCHEMA_URL" -o "$RAW_SCHEMA"
+
+# Heuristic: if starts with {, assume JSON; otherwise try yq
+if head -c 1 "$RAW_SCHEMA" | grep -q '{'; then
+  cp "$RAW_SCHEMA" "$JSON_SCHEMA"
 else
-  # assume JSON already
-  cp "$workdir/schema.raw" "$workdir/schema.json"
+  if ! command -v yq >/dev/null 2>&1; then
+    echo "[!] 'yq' is required to convert YAML to JSON. Please install yq." >&2
+    exit 1
+  fi
+  yq -o=json '.' "$RAW_SCHEMA" > "$JSON_SCHEMA"
 fi
 
-# 3) Get an auth token (if login exists); otherwise continue unauthenticated
+if ! command -v jq >/dev/null 2>&1; then
+  echo "[!] 'jq' is required. Please install jq." >&2
+  exit 1
+fi
+
+# Optional login to get token (specific to VAmPI, harmless elsewhere if 404)
 TOKEN=""
-if curl -s -m 5 -o /dev/null -w "%{http_code}" "$BASE/users/v1/login" | grep -qE '200|401|404'; then
-  TOKEN="$(curl -s -X POST "$BASE/users/v1/login" \
-    -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$API_USER\",\"password\":\"$API_PASS\"}" | jq -r '.token // empty' || true)"
-fi
-AUTH=()
-[[ -n "$TOKEN" ]] && AUTH=(-H "Authorization: Bearer $TOKEN")
-
-echo "[*] Using token: $([[ -n "$TOKEN" ]] && echo 'yes' || echo 'no')"
-
-# 4) Iterate paths & methods from the spec
-#    We’ll do GET/POST/PUT/PATCH. (Skip DELETE by default to avoid destructive ops.)
-paths_and_methods=$(jq -r '
-  .paths
-  | to_entries[]
-  | . as $p
-  | ($p.value | keys[] | ascii_downcase)
-  | select(IN("get","post","put","patch"))
-  | [$p.key, .]
-  | @tsv
-' "$workdir/schema.json")
-
-if [[ -z "$paths_and_methods" ]]; then
-  echo "[!] No usable paths/methods found in schema."
-  exit 4
+LOGIN_URL="$BASE/users/v1/login"
+LOGIN_BODY=$(jq -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}')
+if curl -sS --max-time 5 -H 'Content-Type: application/json' -o "$TMPDIR/login.body" -w '%{http_code}' \
+  -X POST "$LOGIN_URL" --data "$LOGIN_BODY" | grep -qE '^(200|201)$'; then
+  TOKEN="$(jq -r '.token // empty' "$TMPDIR/login.body" || true)"
 fi
 
-# Helper: fill any {param} with a friendly value
-fill_params() {
-  echo "$1" | sed 's/{[^}]*}/seed/g'
+if [[ -n "$TOKEN" ]]; then
+  echo "[*] Using token: yes"
+else
+  echo "[*] Using token: no"
+fi
+
+# Decide which HTTP methods to include
+if [[ -n "$SAFE_ONLY" ]]; then
+  INCLUDE_METHODS='["get"]'
+else
+  if [[ -n "$SIMULATE_DELETE" ]]; then
+    INCLUDE_METHODS='["get","post","put","patch","delete"]'
+  else
+    INCLUDE_METHODS='["get","post","put","patch"]'
+  fi
+fi
+
+# Output directory
+TS="$(date +%F-%H%M%S)"
+OUTDIR="api-seed-${TS}"
+mkdir -p "$OUTDIR"
+
+# Helper: sleep if requested
+maybe_sleep() {
+  if [[ -n "$SLEEP" ]]; then
+    # shellcheck disable=SC2004
+    sleep ${SLEEP}
+  fi
 }
 
-# Helper: choose a sample JSON body for POST/PUT/PATCH
-sample_body() {
-  local p="$1"
-  if [[ "$p" == *"/users/v1/login"* ]]; then
-    printf '{"username":"%s","password":"%s"}' "$API_USER" "$API_PASS"
-  elif [[ "$p" == *"/users/v1/register"* ]]; then
-    printf '{"username":"seed-%s","password":"Lab123!"}' "$RANDOM"
-  elif [[ "$p" == *"/books"* ]]; then
-    printf '{"title":"Seed","author":"Lab","isbn":"SEED-%s"}' "$RANDOM"
-  else
-    printf '{"ping":"seed"}'
-  fi
+# Helper: make a filesystem-safe slug for filenames
+slugify() {
+  local s="$1"
+  s="${s//:/%3A}"
+  s="${s//\//_}"
+  s="${s//\?/_}"
+  s="${s//&/_}"
+  s="${s//=/~}"
+  echo "$s"
+}
+
+# Helper: replace {pathParams} with a value
+replace_params() {
+  local path="$1"
+  local value="$2"
+  # Replace any {param} occurrences with provided value
+  echo "$path" | sed -E 's/\{[^}]+\}/'"$value"'/g'
+}
+
+# Helper: build a sample body based on path
+build_body() {
+  local path="$1"
+  case "$path" in
+    /users/v1/login)
+      jq -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}'
+      ;;
+    /users/v1/register)
+      local uname="user_$RANDOM"
+      jq -n --arg u "$uname" '{username:$u, password:"Lab123!"}'
+      ;;
+    /books/v1)
+      local isbn="978-$RANDOM"
+      jq -n --arg t "Seed Book" --arg a "Seed Author" --arg i "$isbn" \
+        '{title:$t, author:$a, isbn:$i}'
+      ;;
+    *)
+      jq -n '{ping:"seed"}'
+      ;;
+  esac
 }
 
 echo "[*] Hitting endpoints (this seeds API Discovery on WAF)..."
-logdir="api-seed-$(date +%F-%H%M%S)"
-mkdir -p "$logdir"
 
-ua=(-H 'User-Agent: lab-seeder/1.0' -H 'X-Lab-Seed: true')
+# Iterate over paths & methods in OpenAPI
+# Produces lines: "<method>\t<path>"
+jq -r --argjson include "$INCLUDE_METHODS" '
+  .paths
+  | to_entries[]
+  | {p: .key, ops: (.value | to_entries[])}
+  | .ops
+  | map(select(.key as $k | $include | index($k)))
+  | .[]
+  | "\(.key)\t\(.value.operationId // "")\t\(.value.summary // "")\t" + (input_filename | .) # dummy to keep jq happy
+' "$JSON_SCHEMA" >/dev/null 2>&1 || true
+# The above was a no-op guard for weird specs; we’ll do a simpler extraction:
 
-while IFS=$'\t' read -r path method; do
-  [[ -z "$path" ]] && continue
-  m=$(echo "$method" | tr '[:lower:]' '[:upper:]')
-  filled=$(fill_params "$path")
-  url="$BASE$filled"
+while IFS=$'\t' read -r METHOD PATH; do
+  : # placeholder; we are going to fill with a more robust jq below
+done < /dev/null
 
-  # skip mutating methods if SAFE_ONLY=1
-  if [[ "$SAFE_ONLY" = "1" && "$m" != "GET" ]]; then
-    continue
+# Robust extraction: one line per method+path
+mapfile -t LINES < <(jq -r --argjson include "$INCLUDE_METHODS" '
+  .paths
+  | to_entries[]
+  | . as $pathEntry
+  | $pathEntry.value
+  | to_entries[]
+  | select(.key as $k | $include | index($k))
+  | "\(.key)\t" + ($pathEntry.key)
+' "$JSON_SCHEMA")
+
+for line in "${LINES[@]}"; do
+  METHOD="$(cut -f1 <<<"$line")"
+  PATH_SPEC="$(cut -f2 <<<"$line")"
+
+  # Path param replacement:
+  # - For DELETE (simulation) -> sentinel that shouldn't exist
+  # - Otherwise -> generic "seed"
+  if [[ "$METHOD" == "delete" ]]; then
+    PATH_FILLED="$(replace_params "$PATH_SPEC" "__seed_does_not_exist__")"
+  else
+    PATH_FILLED="$(replace_params "$PATH_SPEC" "seed")"
   fi
 
-  if [[ "$m" == "GET" ]]; then
-    echo "GET  $url"
-    curl -s -o "$logdir/$(echo "$m$filled" | tr '/{} ' '_').body" -w "%{http_code} %{time_total}\n" "${ua[@]}" "${AUTH[@]}" "$url" \
-      | tee "$logdir/$(echo "$m$filled" | tr '/{} ' '_').code" || true
+  # Build URL
+  URL="$BASE$PATH_FILLED"
 
-  elif [[ "$m" == "POST" || "$m" == "PUT" || "$m" == "PATCH" ]]; then
-    data=$(sample_body "$filled")
-    echo "$m $url"
-    curl -s -o "$logdir/$(echo "$m$filled" | tr '/{} ' '_').body" -w "%{http_code} %{time_total}\n" \
-      -X "$m" -H 'Content-Type: application/json' "${ua[@]}" "${AUTH[@]}" -d "$data" "$url" \
-      | tee "$logdir/$(echo "$m$filled" | tr '/{} ' '_').code" || true
+  # For DELETE simulation: add dry_run=1 query param & header
+  EXTRA_HEADERS=(
+    -H "User-Agent: lab-seeder/1.0"
+    -H "X-Lab-Seed: true"
+  )
+  if [[ -n "$TOKEN" ]]; then
+    EXTRA_HEADERS+=(-H "Authorization: Bearer $TOKEN")
   fi
 
-  # optional pacing
-  if [[ "$SLEEP" != "0" ]]; then
-    sleep "$SLEEP"
+  BODY_ARGS=()
+  if [[ "$METHOD" == "post" || "$METHOD" == "put" || "$METHOD" == "patch" ]]; then
+    BODY_JSON="$(build_body "$PATH_SPEC")"
+    BODY_ARGS=(-H "Content-Type: application/json" --data "$BODY_JSON")
   fi
-done <<< "$paths_and_methods"
 
-echo "[*] Done. Logs in: $logdir (one .body and one .code per request)"
+  if [[ "$METHOD" == "delete" ]]; then
+    EXTRA_HEADERS+=(-H "X-Lab-Dry-Run: true")
+    if [[ "$URL" == *"?"* ]]; then
+      URL="${URL}&dry_run=1"
+    else
+      URL="${URL}?dry_run=1"
+    fi
+  fi
+
+  # Output filenames
+  FN_METHOD="$(echo "$METHOD" | tr '[:lower:]' '[:upper:]')"
+  FN_PATH="$(slugify "$PATH_FILLED")"
+  BODY_FILE="$OUTDIR/${FN_METHOD}_${FN_PATH}.body"
+  CODE_FILE="$OUTDIR/${FN_METHOD}_${FN_PATH}.code"
+
+  # Print to console
+  printf "%-4s %s\n" "$FN_METHOD" "$URL"
+
+  # Perform request
+  # shellcheck disable=SC2086
+  curl -sS -o "$BODY_FILE" -w "%{http_code} %{time_total}\n" -X "$FN_METHOD" "$URL" "${EXTRA_HEADERS[@]}" ${BODY_ARGS[@]+"${BODY_ARGS[@]}"} | tee "$CODE_FILE"
+
+  maybe_sleep
+done
+
+echo "[*] Done. Logs in: $OUTDIR (one .body and one .code per request)"
