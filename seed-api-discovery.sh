@@ -77,26 +77,8 @@ JSON_SCHEMA="$TMPDIR/schema.json"
 
 curl -sSfL "$SCHEMA_URL" -o "$RAW_SCHEMA"
 
-# Tool bootstrap: ensure jq works; for YAML, ensure yq works. If not, fetch static binaries locally.
-JQ_BIN="jq"
+# Tool bootstrap: ensure yq works for YAML conversion. If not, fetch static binary locally.
 YQ_BIN="yq"
-
-ensure_jq() {
-  if command -v jq >/dev/null 2>&1 && jq --version >/dev/null 2>&1; then
-    JQ_BIN="jq"; return 0
-  fi
-  local arch
-  arch="$(uname -m || echo x86_64)"
-  local url=""
-  case "$arch" in
-    x86_64|amd64) url="https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64" ;;
-    aarch64|arm64) url="https://github.com/jqlang/jq/releases/latest/download/jq-linux-aarch64" ;;
-  esac
-  if [[ -n "$url" ]]; then
-    curl -fsSL "$url" -o "$TMPDIR/jq" && chmod +x "$TMPDIR/jq" && JQ_BIN="$TMPDIR/jq" && return 0
-  fi
-  return 1
-}
 
 ensure_yq() {
   if command -v yq >/dev/null 2>&1 && yq --version >/dev/null 2>&1; then
@@ -127,15 +109,26 @@ else
   "$YQ_BIN" -o=json '.' "$RAW_SCHEMA" > "$JSON_SCHEMA"
 fi
 
-ensure_jq || { echo "[!] 'jq' is required and could not be installed automatically." >&2; exit 1; }
-
 # Optional login to get token (specific to VAmPI, harmless elsewhere if 404)
 TOKEN=""
 LOGIN_URL="$BASE/users/v1/login"
-LOGIN_BODY=$("$JQ_BIN" -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}')
+LOGIN_BODY=$(printf '{"username":"%s","password":"%s"}' "$API_USER" "$API_PASS")
 if curl -sS --max-time 5 -H 'Content-Type: application/json' -o "$TMPDIR/login.body" -w '%{http_code}' \
   -X POST "$LOGIN_URL" --data "$LOGIN_BODY" | grep -qE '^(200|201)$'; then
-  TOKEN="$("$JQ_BIN" -r '.token // empty' "$TMPDIR/login.body" || true)"
+  if command -v python3 >/dev/null 2>&1; then
+    TOKEN="$(python3 - "$TMPDIR/login.body" <<'PY'
+import json,sys
+with open(sys.argv[1]) as f:
+    try:
+        d=json.load(f)
+    except Exception:
+        d={}
+print(d.get('token',''))
+PY
+    )"
+  else
+    TOKEN=""
+  fi
 fi
 
 if [[ -n "$TOKEN" ]]; then
@@ -192,52 +185,45 @@ build_body() {
   local path="$1"
   case "$path" in
     /users/v1/login)
-      "$JQ_BIN" -n --arg u "$API_USER" --arg p "$API_PASS" '{username:$u, password:$p}'
+      printf '{"username":"%s","password":"%s"}' "$API_USER" "$API_PASS"
       ;;
     /users/v1/register)
       local uname="user_$RANDOM"
-      "$JQ_BIN" -n --arg u "$uname" '{username:$u, password:"Lab123!"}'
+      printf '{"username":"%s","password":"%s"}' "$uname" "Lab123!"
       ;;
     /books/v1)
       local isbn="978-$RANDOM"
-      "$JQ_BIN" -n --arg t "Seed Book" --arg a "Seed Author" --arg i "$isbn" \
-        '{title:$t, author:$a, isbn:$i}'
+      printf '{"title":"%s","author":"%s","isbn":"%s"}' "Seed Book" "Seed Author" "$isbn"
       ;;
     *)
-      "$JQ_BIN" -n '{ping:"seed"}'
+      printf '{"ping":"seed"}'
       ;;
   esac
 }
 
 echo "[*] Hitting endpoints (this seeds API Discovery on WAF)..."
 
-# Iterate over paths & methods in OpenAPI
-# Produces lines: "<method>\t<path>"
-"$JQ_BIN" -r --argjson include "$INCLUDE_METHODS" '
-  .paths
-  | to_entries[]
-  | {p: .key, ops: (.value | to_entries[])}
-  | .ops
-  | map(select(.key as $k | $include | index($k)))
-  | .[]
-  | "\(.key)\t\(.value.operationId // "")\t\(.value.summary // "")\t" + (input_filename | .) # dummy to keep jq happy
-' "$JSON_SCHEMA" >/dev/null 2>&1 || true
-# The above was a no-op guard for weird specs; we’ll do a simpler extraction:
-
-while IFS=$'\t' read -r METHOD PATH; do
-  : # placeholder; we are going to fill with a more robust jq below
-done < /dev/null
-
-# Robust extraction: one line per method+path
-mapfile -t LINES < <("$JQ_BIN" -r --argjson include "$INCLUDE_METHODS" '
-  .paths
-  | to_entries[]
-  | . as $pathEntry
-  | $pathEntry.value
-  | to_entries[]
-  | select(.key as $k | $include | index($k))
-  | "\(.key)\t" + ($pathEntry.key)
-' "$JSON_SCHEMA")
+# Extract method+path lines via Python to avoid jq dependency
+mapfile -t LINES < <(python3 - "$JSON_SCHEMA" "$INCLUDE_METHODS" <<'PY'
+import json, sys
+schema_path=sys.argv[1]
+include=json.loads(sys.argv[2])
+try:
+    with open(schema_path) as f:
+        schema=json.load(f)
+except Exception:
+    schema={}
+paths=schema.get('paths') or {}
+if isinstance(paths, dict):
+    for p, ops in paths.items():
+        if not isinstance(ops, dict):
+            continue
+        for method in ops.keys():
+            m=str(method).lower()
+            if m in include:
+                print(f"{m}\t{p}")
+PY
+)
 
 for line in "${LINES[@]}"; do
   METHOD="$(cut -f1 <<<"$line")"
