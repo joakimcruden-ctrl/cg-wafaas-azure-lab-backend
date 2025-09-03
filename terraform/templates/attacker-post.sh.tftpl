@@ -14,7 +14,28 @@ systemctl restart ssh || true
 # Install the seed script from deployment package (if provided)
 if [ -n "${seed_b64}" ]; then
   printf %s "${seed_b64}" | base64 -d > /usr/local/bin/seed-api-discovery.sh
+  # Normalize potential CRLF line endings and ensure executable
+  sed -i "s/\r$//" /usr/local/bin/seed-api-discovery.sh || true
   chmod 0755 /usr/local/bin/seed-api-discovery.sh
+fi
+
+# Ensure prerequisites for seed script are installed: curl, jq, yq
+if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v yq >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update || true
+  apt-get install -y --no-install-recommends curl jq yq || true
+fi
+if ! command -v yq >/dev/null 2>&1; then
+  arch=$(dpkg --print-architecture 2>/dev/null || echo amd64)
+  url=""
+  case "$arch" in
+    amd64) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" ;;
+    arm64|aarch64) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm64" ;;
+    armhf|armv7l) url="https://github.com/mikefarah/yq/releases/latest/download/yq_linux_arm" ;;
+  esac
+  if [ -n "$url" ]; then
+    curl -fsSL "$url" -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq || true
+  fi
 fi
 
 # Ensure attendee users exist, passwords set, sudo enabled, and copy seed script

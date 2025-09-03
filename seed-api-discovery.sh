@@ -10,6 +10,11 @@ if [[ -z "$BASE" ]]; then
   exit 1
 fi
 
+# If no scheme provided, default to http://
+if ! [[ "$BASE" =~ ^https?:// ]]; then
+  BASE="http://$BASE"
+fi
+
 # Optional creds for VAmPI (defaults work in the demo image)
 API_USER="${API_USER:-morty}"
 API_PASS="${API_PASS:-morty}"
