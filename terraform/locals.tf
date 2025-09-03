@@ -1,6 +1,7 @@
 locals {
   raw_users = split("\n", chomp(file(var.users_file)))
-  user_list = [for u in local.raw_users : trimspace(u) if trimspace(u) != ""]
+  # Include only non-empty, non-comment lines (lines starting with '#')
+  user_list = [for u in local.raw_users : trimspace(u) if trimspace(u) != "" && !startswith(trimspace(u), "#")]
 
   # Best-effort sanitized prefix for DNS label usage without regex functions
   prefix_label = substr(

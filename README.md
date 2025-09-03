@@ -6,6 +6,7 @@ Workshop lab automation for deploying multiple API backends (VAmPI) and a shared
 Quick start
 - Prereqs: Azure subscription, `az` logged in, Terraform >= 1.3 installed.
 - Edit `users.txt` with one name per line.
+- Edit `users.txt` with one name per line. Lines starting with `#` are treated as comments and ignored.
 - Optionally edit `terraform.tfvars` (location, prefix, SSH CIDR).
 - Linux/macOS: run `./scripts/deploy.sh`.
 - Windows (PowerShell): run `powershell -ExecutionPolicy Bypass -File .\scripts\deploy.ps1`.

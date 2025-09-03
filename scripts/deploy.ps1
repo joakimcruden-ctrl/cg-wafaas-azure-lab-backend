@@ -142,9 +142,13 @@ function Require-UsersFile {
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Required users file not found: $Path"
     }
-    $nonEmpty = Get-Content -LiteralPath $Path | Where-Object { $_.Trim() -ne '' } | Select-Object -First 1
+    # Consider only non-empty lines that do not start with '#'
+    $nonEmpty = Get-Content -LiteralPath $Path | Where-Object {
+        $line = $_.Trim();
+        ($line -ne '') -and (-not $line.StartsWith('#'))
+    } | Select-Object -First 1
     if (-not $nonEmpty) {
-        throw "The users file ($Path) has no non-empty lines. Add one username per line."
+        throw "The users file ($Path) has no non-empty, non-comment lines. Add one username per line; prefix with '#' to comment out."
     }
 }
 
