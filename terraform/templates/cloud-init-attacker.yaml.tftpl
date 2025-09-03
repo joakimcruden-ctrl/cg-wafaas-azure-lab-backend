@@ -96,6 +96,20 @@ EOF_UP_EARLY
       pipx install yq || true
     fi
 
+    # Ensure jq is available (for JSON parsing in seed script)
+    if ! command -v jq >/dev/null 2>&1; then
+      echo "jq not found via apt; attempting binary install..."
+      arch=$(dpkg --print-architecture || echo amd64)
+      url=""
+      case "$arch" in
+        amd64) url="https://github.com/jqlang/jq/releases/latest/download/jq-linux-amd64" ;;
+        arm64|aarch64) url="https://github.com/jqlang/jq/releases/latest/download/jq-linux-aarch64" ;;
+      esac
+      if [ -n "$url" ]; then
+        curl -fsSL "$url" -o /usr/local/bin/jq && chmod +x /usr/local/bin/jq || true
+      fi
+    fi
+
     # Secondary install strategies
     # Symlinks for common Debian names
     ln -sf /usr/bin/fdfind /usr/local/bin/fd || true
