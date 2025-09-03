@@ -50,6 +50,7 @@ Quick Testing
 - Seeder (optional):
   - `./seed-api-discovery.sh http://<api-host>`
   - Safe mode (GET only): `SAFE_ONLY=1 ./seed-api-discovery.sh http://<api-host>`
+  - Full seed pass (safe): `S=http://URL/api API_USER=morty API_PASS=morty SIMULATE_DELETE=1 SLEEP=0.2 ./seed-api-discovery.sh`
 
 Troubleshooting
 - 502/404 on /api or /app: containers may still be starting.
