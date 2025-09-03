@@ -28,9 +28,10 @@ Outputs
   - When deploying with `-onlyattacker`, API fields in the CSV are left empty.
 
 Seed Script Source
-- You can point the attacker VM to download the seeder script directly from your Git repo (or any URL) by setting `seed_script_url` in `terraform/terraform.tfvars`, e.g.:
-  - `seed_script_url = "https://raw.githubusercontent.com/<org>/<repo>/<branch>/seed-api-discovery.sh"`
-- If the URL is empty or the download fails, the VM falls back to the embedded `seed-api-discovery.sh` in this repository.
+- By default, the attacker VM downloads the seed script from this repo’s main branch:
+  - `https://raw.githubusercontent.com/joakimcruden-ctrl/cg-wafaas-azure-lab-backend/main/seed-api-discovery.sh`
+- You can override the URL by setting `seed_script_url` in `terraform/terraform.tfvars`.
+- If the download fails, the VM falls back to the embedded `seed-api-discovery.sh` in this repository.
 
 Services & Access
 - API VMs host two apps behind a reverse proxy on port 80:

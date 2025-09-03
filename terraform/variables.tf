@@ -59,7 +59,7 @@ variable "attacker_admin_username" {
 }
 
 variable "seed_script_url" {
-  description = "Optional URL to download the seed-api-discovery.sh onto the attacker VM. If empty or download fails, falls back to the embedded script."
+  description = "URL to download the seed-api-discovery.sh onto the attacker VM. If download fails, falls back to the embedded script."
   type        = string
-  default     = ""
+  default     = "https://raw.githubusercontent.com/joakimcruden-ctrl/cg-wafaas-azure-lab-backend/main/seed-api-discovery.sh"
 }
